@@ -1,5 +1,6 @@
-from unit_cell import BCCUnitCell
-from problem import ElasticThermalStrategy
+from lattice_homo.unit_cell import BCCUnitCell
+from lattice_homo.problem import ElasticThermalStrategy
+
 
 geo_params1={'dimX': 1.0, 
             'radiusInter': 0.05279541,
@@ -28,8 +29,8 @@ mesh_params = {
 
 model_name='BCC_vertified_2'
 bcc = BCCUnitCell(model_name, geo_params1, mesh_params, material_properties)
-hp = ElasticThermalStrategy()
-# hp.solve(bcc)
+p = ElasticThermalStrategy()
+# p.solve(bcc)
 
 
-hp.post_process(bcc, display_in_viewport=True)
+p.post_process(bcc, display_in_viewport=True)

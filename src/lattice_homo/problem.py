@@ -41,7 +41,6 @@ class ElasticThermalStrategy(ProblemTypeStrategy):
         abaqus_utilities.apply_loads(model_name, load_vec)
         result_odb = abaqus_utilities.submit_job(model_name, load_vec, display_in_viewport)
         effective_props = abaqus_utilities.calc_effective_props(vol_unitcell, load_vec, result_odb, scale)
- 
         abaqus_utilities.save_effective_props(model_name, effective_props)
         abaqus_utilities.create_report_json(model_name, unit_cell, effective_props,  scale)
 
@@ -51,7 +50,6 @@ class ElasticThermalStrategy(ProblemTypeStrategy):
         # Abaqus script dealing with elastic thermodynamics
         model_name = unit_cell.model_name
         scale = unit_cell.get_scale()
-        
         geo_params_scaled = {k: v * scale for k, v in unit_cell.get_geo_params().items()}
         
         mesh_params_scaled = {

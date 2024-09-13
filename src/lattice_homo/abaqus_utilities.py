@@ -46,7 +46,7 @@ class AbaqusUtilities:
     This class contains generic methods
     '''
     @staticmethod
-    def _material_definition(model_name: str, material_properties: Dict[str, Any], scale: float) :
+    def _material_definition_et(model_name: str, material_properties: Dict[str, Any], scale: float) :
         """
         Assume that the Mdb model has been defined,
         and only ISOTROPIC case is under consideration.
@@ -58,9 +58,12 @@ class AbaqusUtilities:
         material_name = material_properties['name']
         mdb.models[model_name].Material(name=material_name)
         if material_properties['type'].upper() == 'ISOTROPIC':
-            E = material_properties['E']
-            nu = material_properties['nu']
-            CTE = material_properties['CTE']
+            try:
+                E = material_properties['E']
+                nu = material_properties['nu']
+                CTE = material_properties['CTE']
+            except KeyError as e:
+                raise KeyError(f"Missing required material property: {e}")
             mdb.models[model_name].materials[material_name].Elastic(
                 type=ISOTROPIC,
                 table=((E/(scale)**2, \
@@ -70,7 +73,30 @@ class AbaqusUtilities:
                 table=((CTE,),))
 
     @staticmethod
+    def _material_definition_hc(model_name: str, material_properties: Dict[str, Any], scale: float) :
+        """
+        Assume that the Mdb model has been defined,
+        and only ISOTROPIC case is under consideration.
+
+        ElasticThermalHomogenization
+
+        Define the material properties and create material section
+        """
+        material_name = material_properties['name']
+        mdb.models[model_name].Material(name=material_name)
+        if material_properties['type'].upper() == 'ISOTROPIC':
+            try:
+                k = material_properties['k']
+            except KeyError as e:
+                raise KeyError(f"Missing required material property: {e}")
+            mdb.models[model_name].materials[material_name].Conductivity(table=((k,),))
+
+
+    @staticmethod
     def _create_section(model_name: str, section_name: str, material_name: str):
+        '''
+        Genaral method.
+        '''
         mdb.models[model_name].HomogeneousSolidSection(
             name=section_name,
             material=material_name,
@@ -88,7 +114,7 @@ class AbaqusUtilities:
     @staticmethod
     def assign_material(model_name: str, material_properties: Dict[str, Any], scale: float):
         section_name = material_name = material_properties['name']
-        AbaqusUtilities._material_definition(model_name, material_properties, scale)
+        AbaqusUtilities._material_definition_et(model_name, material_properties, scale)
         AbaqusUtilities._create_section(model_name, section_name, material_name)
         AbaqusUtilities._assign_section(model_name, section_name)
 
@@ -181,15 +207,15 @@ class AbaqusUtilities:
         refPoint = (mdb.models[model_name].rootAssembly.referencePoints[keyRefPointList[2]],)
         mdb.models[model_name].rootAssembly.Set(
             referencePoints=refPoint,
-            name='Constraints Driver Tx')
+            name='CONSTRAINTS DRIVER TX')
         refPoint = (mdb.models[model_name].rootAssembly.referencePoints[keyRefPointList[1]],)
         mdb.models[model_name].rootAssembly.Set(
             referencePoints=refPoint,
-            name='Constraints Driver Ty')		
+            name='CONSTRAINTS DRIVER TY')		
         refPoint = (mdb.models[model_name].rootAssembly.referencePoints[keyRefPointList[0]],)
         mdb.models[model_name].rootAssembly.Set(
             referencePoints=refPoint,
-            name='Constraints Driver Tz')
+            name='CONSTRAINTS DRIVER TZ')
     
     @classmethod
     def setup_mesh_pbc(cls, model_name: str, mesh_sens: float, dims: list):
@@ -202,7 +228,226 @@ class AbaqusUtilities:
         return 
 
     @classmethod
-    def _set_PBC(cls, model_name: str, nodes_matched, dims: list):
+    def _set_PBC_hc(cls, model_name: str, nodes_matched, dims: list):
+        '''
+        # The 'Temp' equation (Abaqus coordinate 11)
+        '''
+        # The length of the whole unit cell model
+        xDim, yDim, zDim = dims
+
+        #  Vertex
+        vertex_names = [f'Node_vertex{i}_%s'%(nodes_matched[f'vertex{i}'][0]) for i in range(1,9)] 
+        vertex_equation_data = [
+            {
+                "name": "T2-T1 Master node on Temp",
+                "terms": (
+                    (1.0, vertex_names[1], 11),
+                    (-1.0, vertex_names[0], 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11)
+                )
+            },
+            {
+                "name": "T3-T1 Master node on Temp",
+                "terms": (
+                    (1.0, vertex_names[2], 11),
+                    (-1.0, vertex_names[0], 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)
+                )
+            },
+            {
+                "name": "T4-T1 Master node on Temp",
+                "terms": (
+                    (1.0, vertex_names[3], 11),
+                    (-1.0, vertex_names[0], 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)
+                )
+            },
+            {
+                "name": "T5-T1 Master node on Temp",
+                "terms": (
+                    (1.0, vertex_names[4], 11),
+                    (-1.0, vertex_names[0], 11),
+                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)
+                )
+            },
+            {
+                "name": "T6-T1 Master node on Temp",
+                "terms": (
+                    (1.0, vertex_names[5], 11),
+                    (-1.0, vertex_names[0], 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
+                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)
+                )
+            },
+            {
+                "name": "T7-T1 Master node on Temp",
+                "terms": (
+                    (1.0, vertex_names[6], 11),
+                    (-1.0, vertex_names[0], 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11),
+                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)
+                )
+            },
+            {
+                "name": "T8-T1 Master node on Temp",
+                "terms": (
+                    (1.0, vertex_names[7], 11),
+                    (-1.0, vertex_names[0], 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
+                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)
+                )
+            }
+        ]
+        for eq_data in vertex_equation_data:
+            mdb.models[model_name].Equation(
+                name=eq_data["name"],
+                terms=eq_data["terms"]
+            )
+
+        # Edge
+        edges = [nodes_matched[f'edge{i}'] for i in range(1, 13)]
+        # edge I-IV
+        for count, (i,j,k,l) in enumerate(zip(*edges[:4]), start=1):
+            nodeSetLabels = [f'Node_edge{idx}_{label}' for idx, label in enumerate([i, j, k, l], start=1)]
+            nodeSetLabel_I, nodeSetLabel_II, nodeSetLabel_III, nodeSetLabel_IV = nodeSetLabels
+            # This is the T_II-T_I=FAB equation.
+            eqEdgeName = 'T_II-T_I edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_II, 11),
+                    (-1.0, nodeSetLabel_I, 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11)))
+            
+            # This is the T_III-T_I=FAB+FCD equation.
+            eqEdgeName = 'T_III-T_I edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_III, 11),
+                    (-1.0, nodeSetLabel_I, 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)))
+            
+            # This is the T_IV-T_I=FCD equation.
+            eqEdgeName = 'T_IV-T_I edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_IV, 11),
+                    (-1.0, nodeSetLabel_I, 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)))
+
+        # edge V-VIII
+        for count, (i,j,k,l) in enumerate(zip(*edges[4:8]), start=1):
+            nodeSetLabels = [f'Node_edge{idx}_{label}' for idx, label in enumerate([i, j, k, l], start=5)]
+            nodeSetLabel_V, nodeSetLabel_VI, nodeSetLabel_VII, nodeSetLabel_VIII = nodeSetLabels
+            # This is the T_VI-T_V=FAB equation.
+            eqEdgeName = 'T_VI-T_V edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_VI, 11),
+                    (-1.0, nodeSetLabel_V, 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11)))
+            
+            # This is the T_VII-T_V=FAB+FEF equation.
+            eqEdgeName = 'T_VII-T_V edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_VII, 11),
+                    (-1.0, nodeSetLabel_V, 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
+				    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
+            
+            # This is the T_VIII-T_V=FEF equation.
+            eqEdgeName = 'T_VIII-T_V edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_VIII, 11),
+                    (-1.0, nodeSetLabel_V, 11),
+                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
+            
+        # edge IX-XII
+        for count, (i,j,k,l) in enumerate(zip(*edges[8:]), start=1):
+            nodeSetLabels = [f'Node_edge{idx}_{label}' for idx, label in enumerate([i, j, k, l], start=9)]
+            nodeSetLabel_IX, nodeSetLabel_X, nodeSetLabel_XI, nodeSetLabel_XII = nodeSetLabels
+            # This is the T_X-T_IX=FCD equation.
+            eqEdgeName = 'T_X-T_IX edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_X, 11),
+                    (-1.0, nodeSetLabel_IX, 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)))
+            
+            # This is the T_XI-T_IX=FCD+FEF equation.
+            eqEdgeName = 'T_XI-T_IX edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_XI, 11),
+                    (-1.0, nodeSetLabel_IX, 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11),
+				    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
+            
+            # This is the T_XII-T_IX=FEF equation.
+            eqEdgeName = 'T_XII-T_IX edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_XII, 11),
+                    (-1.0, nodeSetLabel_IX, 11),
+                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
+
+
+        # Face
+        faces = [nodes_matched[f'face{i}'] for i in range(1, 7)]
+        # face B-A
+        for count, (i, j) in enumerate(zip(*faces[:2]), start=1):
+            nodeSetLabel_A = f'Node_face1_{i}'
+            nodeSetLabel_B = f'Node_face2_{j}'
+            eqFaceName = 'T_B-T_A face node '
+            eqName = eqFaceName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_B, 11),
+                    (-1.0, nodeSetLabel_A, 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11)))
+
+        # face D-C
+        for count, (i, j) in enumerate(zip(*faces[2:4]), start=1):
+            nodeSetLabel_C = f'Node_face3_{i}'
+            nodeSetLabel_D = f'Node_face4_{j}'
+            eqFaceName = 'T_D-T_C face node '
+            eqName = eqFaceName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_D, 11),
+                    (-1.0, nodeSetLabel_C, 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)))
+
+        # face F-E
+        # This is the T_F-T_E=FEF equation.
+        for count, (i, j) in enumerate(zip(*faces[4:]), start=1):
+            nodeSetLabel_E = f'Node_face5_{i}'
+            nodeSetLabel_F = f'Node_face6_{j}'
+            eqFaceName = 'T_F-T_E face node '
+            eqName = eqFaceName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_F, 11),
+                    (-1.0, nodeSetLabel_E, 11),
+                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
+            
+        print ('Heat Conduction Boundary conditions have been defined') 
+
+    @classmethod
+    def _set_PBC_et(cls, model_name: str, nodes_matched, dims: list):
         # The length of the whole unit cell model
         xDim, yDim, zDim = dims
  
@@ -387,7 +632,6 @@ class AbaqusUtilities:
                 name=eq_data["name"],
                 terms=eq_data["terms"]
             )
-
 
         # Edge
         edges = [nodes_matched[f'edge{i}'] for i in range(1, 13)]
@@ -609,7 +853,7 @@ class AbaqusUtilities:
 
         # Face
         faces = [nodes_matched[f'face{i}'] for i in range(1, 7)]
-        # face A-B
+        # face B-A
         for count, (i, j) in enumerate(zip(*faces[:2]), start=1):
             nodeSetLabel_A = f'Node_face1_{i}'
             nodeSetLabel_B = f'Node_face2_{j}'
@@ -636,7 +880,7 @@ class AbaqusUtilities:
                     (-1.0, nodeSetLabel_A, 3),
                     (-xDim, 'CONSTRAINTS DRIVER SHEAR_ZX', 1)))
 
-
+        # face D-C
         # This is the U_D-U_C=FCD equation.
         for count, (i, j) in enumerate(zip(*faces[2:4]), start=1):
             nodeSetLabel_C = f'Node_face3_{i}'
@@ -663,6 +907,7 @@ class AbaqusUtilities:
                     (-1.0, nodeSetLabel_C, 3),
                     (-yDim, 'CONSTRAINTS DRIVER SHEAR_YZ', 1)))
 
+        # face F-E
         # This is the U_F-U_E=FEF equation.
         for count, (i, j) in enumerate(zip(*faces[4:]), start=1):
             nodeSetLabel_E = f'Node_face5_{i}'
@@ -1093,6 +1338,62 @@ class AbaqusUtilities:
         del mdb.models[model_name].fieldOutputRequests['F-Output-1']
 
     @classmethod
+    def create_steps_hc(cls, model_name):
+        # This function allows for more complex step set-up.
+        mdb.models[model_name].HeatTransferStep(amplitude=RAMP, 
+            name='Heat Transfer Step', 
+            previous='initial', response=STEADY_STATE)
+
+        # Define an an additional History output request for the Tx RP.
+        regionDef=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TX']
+        mdb.models[model_name].HistoryOutputRequest(name='Output Request Tx', 
+            createStepName='Heat Transfer Step', variables=('NT', ), region=regionDef, 
+            sectionPoints=DEFAULT, rebar=EXCLUDE)
+
+        # Define an an additional field output request for the Ty RP.
+        regionDef=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TY']
+        mdb.models[model_name].HistoryOutputRequest(name='Output Request Ty', 
+            createStepName='Heat Transfer Step', variables=('NT', ), region=regionDef, 
+            sectionPoints=DEFAULT, rebar=EXCLUDE)
+            
+        # Define an an additional field output request for the Tz RP.
+        regionDef=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TZ']
+        mdb.models[model_name].HistoryOutputRequest(name='Output Request Tz', 
+            createStepName='Heat Transfer Step', variables=('NT', ), region=regionDef, 
+            sectionPoints=DEFAULT, rebar=EXCLUDE)
+	
+        # Delete the default Field Output Request.
+        mdb.models[model_name].FieldOutputRequest(createStepName='Heat Transfer Step', 
+            name='Heat flux vector', variables=( 'HFL',))
+        del mdb.models[model_name].fieldOutputRequests['F-Output-1']
+
+    @classmethod
+    def apply_loads_hc(cls, model_name, load_vec=(1.0,)*3):
+        Tx, Ty, Tz = load_vec
+
+        # Setting up the concentrated Heat Flux.
+        if (Tx!=0.0):
+            mdb.models[model_name].ConcentratedHeatFlux(
+                createStepName='Heat Transfer Step', 
+                magnitude=Tx, 
+                name='Heat Flux on CONSTRAINTS DRIVER TX', 
+                region=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TX'])
+                
+        if (Ty!=0.0):
+            mdb.models[model_name].ConcentratedHeatFlux(
+                createStepName='Heat Transfer Step', 
+                magnitude=Ty, 
+                name='Heat Flux on CONSTRAINTS DRIVER TY', 
+                region=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TY'])
+        if (Tz!=0.0):
+            mdb.models[model_name].ConcentratedHeatFlux(
+                createStepName='Heat Transfer Step', 
+                magnitude=Tz, 
+                name='Heat Flux on CONSTRAINTS DRIVER TZ', 
+                region=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TZ'])
+  
+
+    @classmethod
     def apply_loads(cls, model_name, load_vec=(1.0,)*7):
         instance_name = AbaqusUtilities._get_instance_name(model_name) 
         assembly = mdb.models[model_name].rootAssembly
@@ -1255,10 +1556,49 @@ class AbaqusUtilities:
         else:
             resultODB = odbAccess.openOdb(path=fileName)
         return resultODB
-# need to be delete
+    # need to be delete
     @classmethod
     def get_odb(cls,model_name, load_vec=(1.0,)*7, display_in_viewport=True):
         job_name = model_name.replace(' ','_')
+        fileName = job_name + '.odb'
+        if display_in_viewport:
+            resultODB = visualization.openOdb(path=fileName, readOnly=True)
+            cls.viewport_display(model_name, resultODB, load_vec)
+        else:
+            resultODB = odbAccess.openOdb(path=fileName)
+        return resultODB
+    @classmethod
+    def submit_job_hc(cls, model_name, load_vec=(1.0,)*7, display_in_viewport=True, job_params=None):
+        job_name = model_name.replace(' ','_') +'_hc'
+        mdb.Job(name=job_name,
+					model=model_name,
+					description='Applying concentrated forces(temperature) at the driving points',
+					type=ANALYSIS, 
+					atTime=None, waitMinutes=0, waitHours=0, queue=None,
+					memory=70, 
+					memoryUnits=PERCENTAGE, getMemoryFromAnalysis=True, 
+					explicitPrecision=SINGLE, nodalOutputPrecision=SINGLE,
+					echoPrint=OFF, modelPrint=OFF, contactPrint=OFF, historyPrint=OFF,
+					userSubroutine='', 
+					scratch='', parallelizationMethodExplicit=DOMAIN, 
+					multiprocessingMode=DEFAULT,
+					numDomains=4, numCpus=2)
+        # UnitCell._create_viewport(model_name)
+
+        mdb.jobs[job_name].submit(consistencyChecking=ON)
+        mdb.jobs[job_name].waitForCompletion()
+
+        fileName = job_name + '.odb'
+        if display_in_viewport:
+            resultODB = visualization.openOdb(path=fileName, readOnly=True)
+            cls.viewport_display(model_name, resultODB, load_vec)
+        else:
+            resultODB = odbAccess.openOdb(path=fileName)
+        return resultODB
+    # need to be delete
+    @classmethod
+    def get_odb(cls,model_name, load_vec=(1.0,)*7, display_in_viewport=True):
+        job_name = model_name.replace(' ','_') +'_hc'
         fileName = job_name + '.odb'
         if display_in_viewport:
             resultODB = visualization.openOdb(path=fileName, readOnly=True)
@@ -1343,6 +1683,116 @@ class AbaqusUtilities:
                     width=155.0,
                     height=110.0)
                 viewPortIndexOffset += 1
+
+    @classmethod
+    def viewport_display_hc(cls, model_name: str, odb_file, load_vec=None):
+        '''
+        odb_file:
+        load_vec: loading vector
+      
+        ''' 
+        def create_viewport(name, step, frame_index, variable_label, comp1,comp2, 
+        x_angle=270.0, y_angle=0.0, z_angle=270.0):
+            session.Viewport(
+                name=name,
+                titleStyle=CUSTOM,
+                customTitleString=name)
+            session.viewports[name].setValues(displayedObject=odb_file)
+            session.viewports[name].odbDisplay.display.setValues(
+                plotState=CONTOURS_ON_DEF)
+            session.viewports[name].odbDisplay.setPrimaryVariable(
+                variableLabel=variable_label,
+                outputPosition=INTEGRATION_POINT,
+                refinement=(comp1, comp2))
+            session.viewports[name].view.rotate(
+                mode=MODEL,
+                xAngle=x_angle,
+                yAngle=y_angle,
+                zAngle=z_angle,
+                drawImmediately=True)
+
+        if load_vec is None:
+            return
+        # name, step, variableLabel, refinement(comp1, comp2)
+        ViewportData = namedtuple('ViewportData', ['name', 'variable_label', 'comp1', 'comp2'])
+        viewport_data = [
+            ViewportData('Pure TX load', 'HFL', COMPONENT, 'HFL1'),
+            ViewportData('Pure TY load', 'HFL', COMPONENT, 'HFL2'),
+            ViewportData('Pure TZ load', 'HFL', COMPONENT, 'HFL3')
+        ]
+
+        
+        for i, data in enumerate(viewport_data):
+            if (load_vec[i] != 0.0):
+                create_viewport(data.name, data.variable_label, data.comp1, data.comp2)
+
+        session.viewports[model_name].restore()
+        session.viewports[model_name].setValues(
+			origin=(10.0, -105.0),
+			width=155.0,
+			height=110.0)
+        
+        viewPortIndexOffset = 0
+        for i, data in enumerate(viewport_data):
+            if (load_vec[i] != 0.0):
+                session.viewports[viewport_data[case_index].name].setValues(
+                    origin=(15.0 - 5.0 * viewPortIndexOffset, 60.0  - 10.0 * viewPortIndexOffset),
+                    width=155.0,
+                    height=110.0)
+                viewPortIndexOffset += 1 
+
+
+    @classmethod
+    def calc_effective_props_hc(cls, vol_unitcell: float, load_vec: list[float], odb_file, scale: float):
+        def get_displacement(frame, indices):
+            return [frame.fieldOutputs['U'].values[i].data[0] for i in indices]
+
+        def compute_modulus(load: float, vol_unitcell: float, F_eps0: float, scale: float):
+            return (load * scale * scale) / (vol_unitcell * F_eps0)
+
+        def compute_poisson_ratio(disp_num: float, disp_denom: float):
+            return -disp_num / disp_denom
+
+        Tx, Ty, Tz = load_vec
+        # Collect steps
+        HeatTransferStep = odb_file.steps.values()[0]
+        # Index 0 holds the reference frame.
+        step = odb_file.steps[HeatTransferStep.name]
+        Tx_incre = step.historyRegions['Node ASSEMBLY.7'].historyOutputs['NT11'].data[-1][1]			
+        Ty_incre = step.historyRegions['Node ASSEMBLY.8'].historyOutputs['NT11'].data[-1][1]	
+        Tz_incre = step.historyRegions['Node ASSEMBLY.9'].historyOutputs['NT11'].data[-1][1]	
+
+        K0_x = Tx / vol_unitcell / Tx_incre
+        K0_y = Ty / vol_unitcell / Ty_incre
+        K0_z = Tz / vol_unitcell / Tz_incre
+        
+        return {"k": [K0_x, K0_y, K0_z]}
+
+
+    @staticmethod
+    def save_effective_props_hc(model_name: str, effective_props):
+        k1, k2, k3 = effective_props['k']
+        props_data ={'k1': k1, 'k2': k2, 'k3': k3}
+
+        with open(f'{model_name}_effective_props_hc.csv', mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(props_data.keys()) 
+            writer.writerow(props_data.values())
+
+    @classmethod
+    def create_report_json_hc(cls, model_name: str, unit_cell: UnitCell, effective_props, scale: float):
+        file_name = model_name + '_hc_' + '.rpt'
+        converted_props = AbaqusUtilities._convert_float32_to_float64(effective_props)
+        data = {
+            'scale': scale,
+            'mesh_params': unit_cell.get_mesh_params(),
+            'geo_params_scaled': unit_cell.get_geo_params(),
+            'material_properties': unit_cell.get_material_properties(),
+            'effective_props': converted_props
+        }
+
+        with open(file_name, 'w', encoding='utf-8') as file:
+            json.dump(data, file, indent=4, ensure_ascii=False)
 
 
     @classmethod
@@ -1466,7 +1916,13 @@ class AbaqusUtilities:
         return data
 
 
-class BCCAbaqusUtilities(AbaqusUtilities):
+class ElasticThermalAbaqusUtilities(AbaqusUtilities):
+    pass
+
+class HeatConductionAbaqusUtilities(AbaqusUtilities):
+    pass
+
+class BCCAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtilities):
     @staticmethod
     def create_model(model_name: str, geo_params_scaled: Dict[str, float], mesh_params_scaled: Dict[str, float]):
         """
@@ -1703,7 +2159,7 @@ class BCCAbaqusUtilities(AbaqusUtilities):
         del model.parts['MeshPartBCC_1_4']
         del model.parts['MeshPartBCC_1_2']
 
-class CubeAbaqusUtilities(AbaqusUtilities):
+class CubeAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtilities):
     @staticmethod
     def create_model(model_name: str, geo_params_scaled: Dict[str, float], mesh_params_scaled: Dict[str, float]):
         """
@@ -1774,10 +2230,10 @@ class CubeAbaqusUtilities(AbaqusUtilities):
         del model.parts['MeshPartCube_1_4']
         del model.parts['MeshPartCube_1_2']
 
-class FCCAbaqusUtilities(AbaqusUtilities):
+class FCCAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtilities):
     pass
 
-class OCTAbaqusUtilities(AbaqusUtilities):
+class OCTAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtilities):
     pass
         
 class AbaqusUtilityFactory:
@@ -1793,24 +2249,3 @@ class AbaqusUtilityFactory:
             raise AbaqusUtilities()
 
 
-
-        
-
-
-        
-
-
-
-
-
-        
-
-        
-
-
-    
-       
-
-
-
-    

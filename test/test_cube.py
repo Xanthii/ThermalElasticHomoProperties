@@ -12,7 +12,8 @@ material_properties = {
     "type": "ISOTROPIC",
     "E": 1.0,
     "nu": 0.3,
-    "CTE": 5.0e-6
+    "CTE": 5.0e-6,
+    "k": 100
 }
 
 
