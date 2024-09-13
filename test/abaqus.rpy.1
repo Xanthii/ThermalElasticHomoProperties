@@ -1,0 +1,41 @@
+# -*- coding: mbcs -*-
+#
+# Abaqus/CAE Release 2024.HF1 replay file
+# Internal Version: 2024_01_13-02.34.40 RELr426 190904
+# Run by im_ca on Fri Sep 13 16:07:29 2024
+#
+
+# from driverUtils import executeOnCaeGraphicsStartup
+# executeOnCaeGraphicsStartup()
+#: Executing "onCaeGraphicsStartup()" in the site directory ...
+from abaqus import *
+from abaqusConstants import *
+session.Viewport(name='Viewport: 1', origin=(0.0, 0.0), width=215.859359741211, 
+    height=206.125)
+session.viewports['Viewport: 1'].makeCurrent()
+session.viewports['Viewport: 1'].maximize()
+from caeModules import *
+from driverUtils import executeOnCaeStartup
+executeOnCaeStartup()
+session.viewports['Viewport: 1'].partDisplay.geometryOptions.setValues(
+    referenceRepresentation=ON)
+Mdb()
+#: A new model database has been created.
+#: The model "Model-1" has been created.
+session.viewports['Viewport: 1'].setValues(displayedObject=None)
+cliCommand("""pip""")
+#* NameError: name 'pip' is not defined
+cliCommand("""python""")
+#* NameError: name 'python' is not defined
+execfile(
+    'D:/OneDrive/Code/Toplogy/Homogenization/ThermalElasticHomoProperties/test/test_cube.py', 
+    __main__.__dict__)
+#* ImportError: No module named 'unit_cell'
+#* File 
+#* "D:/OneDrive/Code/Toplogy/Homogenization/ThermalElasticHomoProperties/test/test_cube.py", 
+#* line 7, in <module>
+#*     from lattice_homo.problem import ElasticThermalStrategy
+#* File 
+#* "D:\OneDrive\Code\Toplogy\Homogenization\ThermalElasticHomoProperties\src\lattice_homo\problem.py", 
+#* line 2, in <module>
+#*     from unit_cell import UnitCell

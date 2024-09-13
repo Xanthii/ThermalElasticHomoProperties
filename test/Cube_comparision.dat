@@ -1,0 +1,427 @@
+1
+
+   Abaqus 2024.HF1                                  Date 13-9ÔÂ-2024   Time 16:21:05
+   For use by Supplied by Team-SolidSQUAD under license from Dassault Systemes or its subsidiary.
+
+
+
+                         The Abaqus Software is a product of:
+
+                           Dassault Systemes Americas Corp.
+                           1301 Atwood Avenue, Suite 101W
+                              Johnston, RI 02919, USA
+ 
+
+
+                   The Abaqus Software is available only under license
+                   from Dassault Systemes or its subsidiary and may be
+                   used or reproduced only in accordance with the terms
+                   of such license.
+ 
+                          On machine DESKTOP-B5NQS9E 
+                          you are authorized to run
+                          Abaqus/Foundation until 31-Dec-2055
+
+                          Your site id is:  
+
+
+ 
+                    For assistance or any other information you may
+                    obtain contact information for your local office
+                    from the world wide web at:
+
+                      https://www.3ds.com/products-services/simulia/services-support/
+
+ 
+                * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+                *                                                         * 
+                *                   *****************                     * 
+                *                   *  N O T I C E  *                     * 
+                *                   *****************                     * 
+                *                                                         * 
+                *                                                         * 
+                *                     Abaqus 2024.HF1                     * 
+                *                                                         * 
+                *       BUILD ID: 2024_01_13-02.34.40 RELr426 190904      * 
+                *                                                         * 
+                *                                                         * 
+                *  Please make sure you are using                         * 
+                *  release Abaqus 2024.HF1 manuals                        * 
+                *  plus the notes accompanying this release.              * 
+                *                                                         * 
+                *                                                         * 
+                *                                                         * 
+                *                                                         * 
+                * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+
+
+ 
+
+
+
+     PROCESSING PART, INSTANCE, AND ASSEMBLY INFORMATION
+   *******************************************************
+
+
+     END PROCESSING PART, INSTANCE, AND ASSEMBLY INFORMATION
+   ***********************************************************
+
+
+
+
+     OPTIONS BEING PROCESSED
+   ***************************
+
+
+  *Heading
+          Applying concentrated forces at the driving points                                                                                                                                                                                                                                                                                                                                                                                                                                                                              
+  *Element, type=C3D10
+  *Elset, elset=ASSEMBLY_CUBE_COMPARISIONINSTANCE_ELEMENTSET-1
+  *material, name=MATERIAL-1
+  *elastic
+  *expansion
+  *initialconditions, type=TEMPERATURE
+  *solidsection, elset=ASSEMBLY_CUBE_COMPARISIONINSTANCE_ELEMENTSET-1, material=MATERIAL-1
+  *solidsection, elset=ASSEMBLY_CUBE_COMPARISIONINSTANCE_ELEMENTSET-1, material=MATERIAL-1
+  *initialconditions, type=TEMPERATURE
+  *boundary
+  *boundary, op=NEW
+  *boundary, op=NEW
+  *boundary, op=NEW
+  *boundary, op=NEW
+  *boundary, op=NEW
+  *boundary, op=NEW
+  *boundary
+  *boundary, op=NEW
+  *boundary, op=NEW
+  *boundary, op=NEW
+  *boundary, op=NEW
+  *boundary, op=NEW
+  *boundary, op=NEW
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+  *equation
+
+ ***NOTE: DUE TO EXCESSIVE REPORTING, THE ECHO OF THE *MPC and *EQUATION 
+          OPTIONS IS BEING SUPPRESSED.
+  *output, field
+  *output, history, frequency=0
+  *output, field
+  *output, history
+  *elementoutput, directions=YES
+  *elementoutput, directions=YES
+  *initialconditions, type=TEMPERATURE
+  *temperature
+  *output, field
+  *output, history, frequency=0
+  *output, field
+  *output, history
+  *elementoutput, directions=YES
+  *elementoutput, directions=YES
+  *initialconditions, type=TEMPERATURE
+  *output, field
+  *output, history, frequency=0
+  *output, field
+  *output, history
+  *elementoutput, directions=YES
+  *elementoutput, directions=YES
+
+ ***NOTE: MPCS (EXTERNAL or INTERNAL, including those generated from rigid body 
+          definitions), KINEMATIC COUPLINGS, AND/OR EQUATIONS WILL ACTIVATE 
+          ADDITIONAL DEGREES OF FREEDOM
+  *step, name="Isothermal linear perturbation step", nlgeom=NO, perturbation
+  *output, field
+  *output, history, frequency=0
+  *loadcase, name="Pure x load"
+  *loadcase, name="Pure y load"
+  *loadcase, name="Pure z load"
+  *loadcase, name="Shear xy load"
+  *loadcase, name="Shear yz load"
+  *loadcase, name="Shear zx load"
+  *step, name="Thermomechanical step", nlgeom=NO, perturbation
+  *output, field
+  *output, history
+  *step, name="Isothermal linear perturbation step", nlgeom=NO, perturbation
+  *step, name="Thermomechanical step", nlgeom=NO, perturbation
+
+ ***WARNING: NODE SET ASSEMBLY_Constraints Driver Tx HAS NO MEMBERS AND WILL BE 
+             IGNORED.  NODES DEFINED IN THIS SET MAY HAVE BEEN DELETED BECAUSE 
+             THEY WERE NOT CONNECTED TO ANY ELEMENTS.
+
+ ***WARNING: NODE SET ASSEMBLY_Constraints Driver Ty HAS NO MEMBERS AND WILL BE 
+             IGNORED.  NODES DEFINED IN THIS SET MAY HAVE BEEN DELETED BECAUSE 
+             THEY WERE NOT CONNECTED TO ANY ELEMENTS.
+
+ ***WARNING: NODE SET ASSEMBLY_Constraints Driver Tz HAS NO MEMBERS AND WILL BE 
+             IGNORED.  NODES DEFINED IN THIS SET MAY HAVE BEEN DELETED BECAUSE 
+             THEY WERE NOT CONNECTED TO ANY ELEMENTS.
+  *step, name="Isothermal linear perturbation step", nlgeom=NO, perturbation
+  Computation of effective elastic material properties                            
+  *static
+  *output, field
+  *elementoutput, directions=YES
+  *nodeoutput, nset="ASSEMBLY_CONSTRAINTS DRIVER FX"
+  *nodeoutput, nset="ASSEMBLY_CONSTRAINTS DRIVER FY"
+  *nodeoutput, nset="ASSEMBLY_CONSTRAINTS DRIVER FZ"
+  *nodeoutput, nset="ASSEMBLY_CONSTRAINTS DRIVER SHEAR_XY"
+  *nodeoutput, nset="ASSEMBLY_CONSTRAINTS DRIVER SHEAR_YZ"
+  *nodeoutput, nset="ASSEMBLY_CONSTRAINTS DRIVER SHEAR_ZX"
+  *output, history, frequency=0
+  *loadcase, name="Pure x load"
+  *boundary, op=NEW
+  *loadcase, name="Pure y load"
+  *boundary, op=NEW
+  *loadcase, name="Pure z load"
+  *boundary, op=NEW
+  *loadcase, name="Shear xy load"
+  *boundary, op=NEW
+  *loadcase, name="Shear yz load"
+  *boundary, op=NEW
+  *loadcase, name="Shear zx load"
+  *boundary, op=NEW
+  *endstep
+  *step, name="Thermomechanical step", nlgeom=NO, perturbation
+  Computation of coefficients of thermal expansion                                
+  *static
+  *temperature
+  *output, field
+  *elementoutput, directions=YES
+  *nodeoutput, nset="ASSEMBLY_CONSTRAINTS DRIVER FX"
+  *nodeoutput, nset="ASSEMBLY_CONSTRAINTS DRIVER FY"
+  *nodeoutput, nset="ASSEMBLY_CONSTRAINTS DRIVER FZ"
+  *output, history
+  *contactoutput
+  *endstep
+  *boundary
+  *step, name="Isothermal linear perturbation step", nlgeom=NO, perturbation
+  *static
+  *loadcase, name="Pure x load"
+  *boundary, op=NEW
+  *cload
+  *loadcase, name="Pure y load"
+  *boundary, op=NEW
+  *cload
+  *loadcase, name="Pure z load"
+  *boundary, op=NEW
+  *cload
+  *loadcase, name="Shear xy load"
+  *boundary, op=NEW
+  *cload
+  *loadcase, name="Shear yz load"
+  *boundary, op=NEW
+  *cload
+  *loadcase, name="Shear zx load"
+  *boundary, op=NEW
+  *cload
+  *endstep
+  *step, name="Thermomechanical step", nlgeom=NO, perturbation
+  *static
+  *temperature
+  *endstep
+
+
+
+                            P R O B L E M   S I Z E
+
+
+          NUMBER OF ELEMENTS IS                                  2080
+          NUMBER OF NODES IS                                     3243
+          NUMBER OF NODES DEFINED BY THE USER                    3243
+          TOTAL NUMBER OF VARIABLES IN THE MODEL                 9717
+          (DEGREES OF FREEDOM PLUS MAX NO. OF ANY LAGRANGE MULTIPLIER
+           VARIABLES. INCLUDE *PRINT,SOLVE=YES TO GET THE ACTUAL NUMBER.)
+
+
+
+                              END OF USER INPUT PROCESSING
+
+
+
+     JOB TIME SUMMARY
+       USER TIME (SEC)      =     0.20    
+       SYSTEM TIME (SEC)    =      0.0    
+       TOTAL CPU TIME (SEC) =     0.20    
+       WALLCLOCK TIME (SEC) =            0
+1
+
+   Abaqus 2024.HF1                                  Date 13-9ÔÂ-2024   Time 16:21:13
+   For use by Supplied by Team-SolidSQUAD under license from Dassault Systemes or its subsidiary.
+
+     Applying concentrated forces at the driving points                                        STEP    1  INCREMENT    1
+     Computation of effective elastic material properties                                 TIME COMPLETED IN THIS STEP   0.00    
+
+
+                        S T E P       1     S T A T I C   A N A L Y S I S
+
+
+          Computation of effective elastic material properties                            
+
+          FIXED TIME INCREMENTS
+          TIME INCREMENT IS                                    2.220E-16
+          TIME PERIOD IS                                       2.220E-16
+
+     LINEAR EQUATION SOLVER TYPE         DIRECT SPARSE
+
+     THIS IS A LINEAR PERTURBATION STEP.
+     ALL LOADS ARE DEFINED AS CHANGE IN LOAD TO THE REFERENCE STATE
+  
+                   M E M O R Y   E S T I M A T E
+  
+ PROCESS      FLOATING PT       MINIMUM MEMORY        MEMORY TO
+              OPERATIONS           REQUIRED          MINIMIZE I/O
+             PER ITERATION           (MB)               (MB)
+  
+     1          2.44E+09               24                 85
+  
+ NOTE:
+      (1) SINCE ABAQUS DOES NOT PRE-ALLOCATE MEMORY AND ONLY ALLOCATES MEMORY AS NEEDED DURING THE ANALYSIS,
+          THE MEMORY REQUIREMENT PRINTED HERE CAN ONLY BE VIEWED AS A GENERAL GUIDELINE BASED ON THE BEST
+          KNOWLEDGE AVAILABLE AT THE BEGINNING OF A STEP BEFORE THE SOLUTION PROCESS HAS BEGUN.
+      (2) THE ESTIMATE IS NORMALLY UPDATED AT THE BEGINNING OF EVERY STEP. IT IS THE MAXIMUM VALUE OF THE
+          ESTIMATE FROM THE CURRENT STEP TO THE LAST STEP OF THE ANALYSIS, WITH UNSYMMETRIC SOLUTION TAKEN
+          INTO ACCOUNT IF APPLICABLE. 
+      (3) SINCE THE ESTIMATE IS BASED ON THE ACTIVE DEGREES OF FREEDOM IN THE FIRST ITERATION OF THE 
+          CURRENT STEP, THE MEMORY ESTIMATE MIGHT BE SIGNIFICANTLY DIFFERENT THAN ACTUAL USAGE FOR 
+          PROBLEMS WITH SUBSTANTIAL CHANGES IN ACTIVE DEGREES OF FREEDOM BETWEEN STEPS (OR EVEN WITHIN
+          THE SAME STEP). EXAMPLES ARE: PROBLEMS WITH SIGNIFICANT CONTACT CHANGES, PROBLEMS WITH MODEL
+          CHANGE, PROBLEMS WITH BOTH STATIC STEP AND STEADY STATE DYNAMIC PROCEDURES WHERE ACOUSTIC 
+          ELEMENTS WILL ONLY BE ACTIVATED IN THE STEADY STATE DYNAMIC STEPS.
+      (4) FOR MULTI-PROCESS EXECUTION, THE ESTIMATED VALUE OF FLOATING POINT OPERATIONS FOR EACH PROCESS
+          IS BASED ON AN INITIAL SCHEDULING OF OPERATIONS AND MIGHT NOT REFLECT THE ACTUAL FLOATING 
+          POINT OPERATIONS COMPLETED ON EACH PROCESS. OPERATIONS ARE DYNAMICALLY BALANCED DURING EXECUTION, 
+          SO THE ACTUAL BALANCE OF OPERATIONS BETWEEN PROCESSES IS EXPECTED TO BE BETTER THAN THE ESTIMATE
+          PRINTED HERE.
+      (5) THE UPPER LIMIT OF MEMORY THAT CAN BE ALLOCATED BY ABAQUS WILL IN GENERAL DEPEND ON THE VALUE OF
+          THE "MEMORY" PARAMETER AND THE AMOUNT OF PHYSICAL MEMORY AVAILABLE ON THE MACHINE. PLEASE SEE
+          THE "ABAQUS ANALYSIS USER'S MANUAL" FOR MORE DETAILS. THE ACTUAL USAGE OF MEMORY AND OF DISK
+          SPACE FOR SCRATCH DATA WILL DEPEND ON THIS UPPER LIMIT AS WELL AS THE MEMORY REQUIRED TO MINIMIZE
+          I/O. IF THE MEMORY UPPER LIMIT IS GREATER THAN THE MEMORY REQUIRED TO MINIMIZE I/O, THEN THE ACTUAL
+          MEMORY USAGE WILL BE CLOSE TO THE ESTIMATED "MEMORY TO MINIMIZE I/O" VALUE, AND THE SCRATCH DISK
+          USAGE WILL BE CLOSE-TO-ZERO; OTHERWISE, THE ACTUAL MEMORY USED WILL BE CLOSE TO THE PREVIOUSLY
+          MENTIONED MEMORY LIMIT, AND THE SCRATCH DISK USAGE WILL BE ROUGHLY PROPORTIONAL TO THE DIFFERENCE
+          BETWEEN THE ESTIMATED "MEMORY TO MINIMIZE I/O" AND THE MEMORY UPPER LIMIT. HOWEVER ACCURATE
+          ESTIMATE OF THE SCRATCH DISK SPACE IS NOT POSSIBLE.
+      (6) USING "*RESTART, WRITE" CAN GENERATE A LARGE AMOUNT OF DATA WRITTEN IN THE WORK DIRECTORY.
+1
+
+   Abaqus 2024.HF1                                  Date 13-9ÔÂ-2024   Time 16:21:14
+   For use by Supplied by Team-SolidSQUAD under license from Dassault Systemes or its subsidiary.
+
+     Applying concentrated forces at the driving points                                        STEP    2  INCREMENT    1
+     Computation of coefficients of thermal expansion                                     TIME COMPLETED IN THIS STEP   0.00    
+
+
+                        S T E P       2     S T A T I C   A N A L Y S I S
+
+
+          Computation of coefficients of thermal expansion                                
+
+          FIXED TIME INCREMENTS
+          TIME INCREMENT IS                                    2.220E-16
+          TIME PERIOD IS                                       2.220E-16
+
+     LINEAR EQUATION SOLVER TYPE         DIRECT SPARSE
+
+     THIS IS A LINEAR PERTURBATION STEP.
+     ALL LOADS ARE DEFINED AS CHANGE IN LOAD TO THE REFERENCE STATE
+  
+                   M E M O R Y   E S T I M A T E
+  
+ PROCESS      FLOATING PT       MINIMUM MEMORY        MEMORY TO
+              OPERATIONS           REQUIRED          MINIMIZE I/O
+             PER ITERATION           (MB)               (MB)
+  
+     1          2.44E+09               22                 75
+  
+ NOTE:
+      (1) SINCE ABAQUS DOES NOT PRE-ALLOCATE MEMORY AND ONLY ALLOCATES MEMORY AS NEEDED DURING THE ANALYSIS,
+          THE MEMORY REQUIREMENT PRINTED HERE CAN ONLY BE VIEWED AS A GENERAL GUIDELINE BASED ON THE BEST
+          KNOWLEDGE AVAILABLE AT THE BEGINNING OF A STEP BEFORE THE SOLUTION PROCESS HAS BEGUN.
+      (2) THE ESTIMATE IS NORMALLY UPDATED AT THE BEGINNING OF EVERY STEP. IT IS THE MAXIMUM VALUE OF THE
+          ESTIMATE FROM THE CURRENT STEP TO THE LAST STEP OF THE ANALYSIS, WITH UNSYMMETRIC SOLUTION TAKEN
+          INTO ACCOUNT IF APPLICABLE. 
+      (3) SINCE THE ESTIMATE IS BASED ON THE ACTIVE DEGREES OF FREEDOM IN THE FIRST ITERATION OF THE 
+          CURRENT STEP, THE MEMORY ESTIMATE MIGHT BE SIGNIFICANTLY DIFFERENT THAN ACTUAL USAGE FOR 
+          PROBLEMS WITH SUBSTANTIAL CHANGES IN ACTIVE DEGREES OF FREEDOM BETWEEN STEPS (OR EVEN WITHIN
+          THE SAME STEP). EXAMPLES ARE: PROBLEMS WITH SIGNIFICANT CONTACT CHANGES, PROBLEMS WITH MODEL
+          CHANGE, PROBLEMS WITH BOTH STATIC STEP AND STEADY STATE DYNAMIC PROCEDURES WHERE ACOUSTIC 
+          ELEMENTS WILL ONLY BE ACTIVATED IN THE STEADY STATE DYNAMIC STEPS.
+      (4) FOR MULTI-PROCESS EXECUTION, THE ESTIMATED VALUE OF FLOATING POINT OPERATIONS FOR EACH PROCESS
+          IS BASED ON AN INITIAL SCHEDULING OF OPERATIONS AND MIGHT NOT REFLECT THE ACTUAL FLOATING 
+          POINT OPERATIONS COMPLETED ON EACH PROCESS. OPERATIONS ARE DYNAMICALLY BALANCED DURING EXECUTION, 
+          SO THE ACTUAL BALANCE OF OPERATIONS BETWEEN PROCESSES IS EXPECTED TO BE BETTER THAN THE ESTIMATE
+          PRINTED HERE.
+      (5) THE UPPER LIMIT OF MEMORY THAT CAN BE ALLOCATED BY ABAQUS WILL IN GENERAL DEPEND ON THE VALUE OF
+          THE "MEMORY" PARAMETER AND THE AMOUNT OF PHYSICAL MEMORY AVAILABLE ON THE MACHINE. PLEASE SEE
+          THE "ABAQUS ANALYSIS USER'S MANUAL" FOR MORE DETAILS. THE ACTUAL USAGE OF MEMORY AND OF DISK
+          SPACE FOR SCRATCH DATA WILL DEPEND ON THIS UPPER LIMIT AS WELL AS THE MEMORY REQUIRED TO MINIMIZE
+          I/O. IF THE MEMORY UPPER LIMIT IS GREATER THAN THE MEMORY REQUIRED TO MINIMIZE I/O, THEN THE ACTUAL
+          MEMORY USAGE WILL BE CLOSE TO THE ESTIMATED "MEMORY TO MINIMIZE I/O" VALUE, AND THE SCRATCH DISK
+          USAGE WILL BE CLOSE-TO-ZERO; OTHERWISE, THE ACTUAL MEMORY USED WILL BE CLOSE TO THE PREVIOUSLY
+          MENTIONED MEMORY LIMIT, AND THE SCRATCH DISK USAGE WILL BE ROUGHLY PROPORTIONAL TO THE DIFFERENCE
+          BETWEEN THE ESTIMATED "MEMORY TO MINIMIZE I/O" AND THE MEMORY UPPER LIMIT. HOWEVER ACCURATE
+          ESTIMATE OF THE SCRATCH DISK SPACE IS NOT POSSIBLE.
+      (6) USING "*RESTART, WRITE" CAN GENERATE A LARGE AMOUNT OF DATA WRITTEN IN THE WORK DIRECTORY.
+
+
+          THE ANALYSIS HAS BEEN COMPLETED
+
+
+
+                              ANALYSIS COMPLETE
+                              WITH      3 WARNING MESSAGES ON THE DAT FILE
+
+
+
+     JOB TIME SUMMARY
+       USER TIME (SEC)      =     0.20    
+       SYSTEM TIME (SEC)    =     0.10    
+       TOTAL CPU TIME (SEC) =     0.30    
+       WALLCLOCK TIME (SEC) =            1
