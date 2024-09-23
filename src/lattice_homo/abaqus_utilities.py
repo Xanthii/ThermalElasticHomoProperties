@@ -2,9 +2,7 @@ from abaqus import *
 from abaqusConstants import *
 # Import objects and functions to draw the sketch.
 import sketch
-# Import some GUI facilities.
-from abaqus import getInputs
-from abaqus import getWarningReply, YES, NO
+
 # Used for sqrt.
 import math
 # # Import objects and functions allowing the definition and handling of ABAQUS parts.
@@ -32,7 +30,7 @@ import odbSection
 
 import numpy as np
 from typing import Dict, Any
-from lattice_homo.unit_cell import UnitCell, BCCUnitCell, FCCUnitCell, CubeUnitCell
+from lattice_homo.unit_cell import UnitCell, BCCUnitCell, FCCUnitCell, CuboidUnitCell
 
 import csv
 import json
@@ -45,8 +43,9 @@ class AbaqusUtilities:
     Provides static methods for executing abaqus scripts 
     This class contains generic methods
     '''
+
     @staticmethod
-    def _material_definition_et(model_name: str, material_properties: Dict[str, Any], scale: float) :
+    def _material_definition(model_name: str, material_properties: Dict[str, Any], scale: float) :
         """
         Assume that the Mdb model has been defined,
         and only ISOTROPIC case is under consideration.
@@ -62,6 +61,7 @@ class AbaqusUtilities:
                 E = material_properties['E']
                 nu = material_properties['nu']
                 CTE = material_properties['CTE']
+                k = material_properties['k']
             except KeyError as e:
                 raise KeyError(f"Missing required material property: {e}")
             mdb.models[model_name].materials[material_name].Elastic(
@@ -71,26 +71,7 @@ class AbaqusUtilities:
             mdb.models[model_name].materials[material_name].Expansion(
                 type=ISOTROPIC,
                 table=((CTE,),))
-
-    @staticmethod
-    def _material_definition_hc(model_name: str, material_properties: Dict[str, Any], scale: float) :
-        """
-        Assume that the Mdb model has been defined,
-        and only ISOTROPIC case is under consideration.
-
-        ElasticThermalHomogenization
-
-        Define the material properties and create material section
-        """
-        material_name = material_properties['name']
-        mdb.models[model_name].Material(name=material_name)
-        if material_properties['type'].upper() == 'ISOTROPIC':
-            try:
-                k = material_properties['k']
-            except KeyError as e:
-                raise KeyError(f"Missing required material property: {e}")
             mdb.models[model_name].materials[material_name].Conductivity(table=((k,),))
-
 
     @staticmethod
     def _create_section(model_name: str, section_name: str, material_name: str):
@@ -110,11 +91,10 @@ class AbaqusUtilities:
         region = p.Set(elements=elements, name='ElementSet-1')
         p.SectionAssignment(region=region, sectionName=section_name)
 
-
     @staticmethod
     def assign_material(model_name: str, material_properties: Dict[str, Any], scale: float):
         section_name = material_name = material_properties['name']
-        AbaqusUtilities._material_definition_et(model_name, material_properties, scale)
+        AbaqusUtilities._material_definition(model_name, material_properties, scale)
         AbaqusUtilities._create_section(model_name, section_name, material_name)
         AbaqusUtilities._assign_section(model_name, section_name)
 
@@ -218,236 +198,454 @@ class AbaqusUtilities:
             name='CONSTRAINTS DRIVER TZ')
     
     @classmethod
-    def setup_mesh_pbc(cls, model_name: str, mesh_sens: float, dims: list):
+    def setup_nodes(cls, model_name: str, mesh_sens: float, dims: list):
         instance_name = AbaqusUtilities._get_instance_name(model_name) 
         nodeset = mdb.models[model_name].rootAssembly.instances[instance_name].nodes
         nodes_coords = cls._classify_all_nodes(nodeset, mesh_sens, dims)
         nodes_matched = cls._nodes_matching(nodes_coords, mesh_sens)
         cls._create_nodeset(model_name, nodes_matched)
-        cls._set_PBC(model_name, nodes_matched, dims)
-        return 
+        return nodes_matched
 
     @classmethod
-    def _set_PBC_hc(cls, model_name: str, nodes_matched, dims: list):
+    def _create_nodeset(cls, model_name: str, nodes_matched):
         '''
-        # The 'Temp' equation (Abaqus coordinate 11)
+        create NodeSet in Abaqus.
         '''
-        # The length of the whole unit cell model
-        xDim, yDim, zDim = dims
+        instance_name = AbaqusUtilities._get_instance_name(model_name) 
+        assembly = mdb.models[model_name].rootAssembly
+        for name, labels in nodes_matched.items():
+            for label in labels:
+                assembly.SetFromNodeLabels(name=f'Node_{name}_{label}', nodeLabels=((instance_name,[label]),))
+      
+    @classmethod
+    def _nodes_matching(cls, nodes_coords, mesh_sens):
+        nodes_matched = {}
+        def match_faces(face1, face2, mesh_sens, coord_indices):
+            """
+            Matches the nodes on both faces and returns a sorted list of labels 
+            assuming there are no duplicate nodes in face1
+            """
+            face1_sorted = list(face1.keys())    
+            face2_sorted = []
 
-        #  Vertex
-        vertex_names = [f'Node_vertex{i}_%s'%(nodes_matched[f'vertex{i}'][0]) for i in range(1,9)] 
-        vertex_equation_data = [
-            {
-                "name": "T2-T1 Master node on Temp",
-                "terms": (
-                    (1.0, vertex_names[1], 11),
-                    (-1.0, vertex_names[0], 11),
-                    (-xDim, 'CONSTRAINTS DRIVER TX', 11)
-                )
-            },
-            {
-                "name": "T3-T1 Master node on Temp",
-                "terms": (
-                    (1.0, vertex_names[2], 11),
-                    (-1.0, vertex_names[0], 11),
-                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
-                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)
-                )
-            },
-            {
-                "name": "T4-T1 Master node on Temp",
-                "terms": (
-                    (1.0, vertex_names[3], 11),
-                    (-1.0, vertex_names[0], 11),
-                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)
-                )
-            },
-            {
-                "name": "T5-T1 Master node on Temp",
-                "terms": (
-                    (1.0, vertex_names[4], 11),
-                    (-1.0, vertex_names[0], 11),
-                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)
-                )
-            },
-            {
-                "name": "T6-T1 Master node on Temp",
-                "terms": (
-                    (1.0, vertex_names[5], 11),
-                    (-1.0, vertex_names[0], 11),
-                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
-                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)
-                )
-            },
-            {
-                "name": "T7-T1 Master node on Temp",
-                "terms": (
-                    (1.0, vertex_names[6], 11),
-                    (-1.0, vertex_names[0], 11),
-                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
-                    (-yDim, 'CONSTRAINTS DRIVER TY', 11),
-                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)
-                )
-            },
-            {
-                "name": "T8-T1 Master node on Temp",
-                "terms": (
-                    (1.0, vertex_names[7], 11),
-                    (-1.0, vertex_names[0], 11),
-                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
-                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)
-                )
-            }
+            precision = int(-np.log10(mesh_sens))
+
+            # Build a face2 dictionary for efficient lookup
+            face2_dict = {}
+            for j in face2.keys():
+                key = tuple(cls._round_to_precision(face2[j][index], precision) for index in coord_indices)  # 根据指定的坐标轴建立键值对
+                face2_dict[key] = j
+
+            # Matching
+            for i in face1_sorted:
+                key = tuple(cls._round_to_precision(face1[i][index], precision) for index in coord_indices)
+                if key in face2_dict:
+                    j = face2_dict[key]
+                    if all(cls._is_close(face1[i][index], face2[j][index], mesh_sens) for index in coord_indices):
+                        face2_sorted.append(j)
+
+            return face1_sorted, face2_sorted
+
+        def match_edges(edge1, edge2, mesh_sens, coord_index):
+            """
+            Matches nodes on two edges and returns the sorted lists of node labels.
+
+            Parameters
+            ----------
+            edge1 : dict
+                Dictionary of nodes on the first edge, where keys are node labels and values are coordinates.
+            edge2 : dict
+                Dictionary of nodes on the second edge, similar structure as edge1.
+            mesh_sens : float
+                Sensitivity value to determine if nodes are close enough to be considered matching.
+            coord_index : int
+                The index of the coordinate direction (0 for x, 1 for y, 2 for z) to compare.
+
+            Returns
+            -------
+            tuple
+                Two lists: one with sorted labels from edge1 and one with matching labels from edge2.
+            """
+            
+            edge1_sorted = list(edge1.keys())
+            edge2_sorted = []
+
+            for i in edge1_sorted:
+                for j in edge2.keys():
+                    if cls._is_close(edge1[i][coord_index], edge2[j][coord_index], mesh_sens):  # 只比较一个指定方向
+                        edge2_sorted.append(j)
+                        break
+
+            return edge1_sorted, edge2_sorted
+        # Matching and sorting of faces
+        face_pairs = [
+        ('face1', 'face2', (1, 2)),  # (y, z) 
+        ('face3', 'face4', (0, 2)),  # (x, z) 
+        ('face5', 'face6', (0, 1))   # (x, y) 
         ]
-        for eq_data in vertex_equation_data:
-            mdb.models[model_name].Equation(
-                name=eq_data["name"],
-                terms=eq_data["terms"]
-            )
+        for face1_name, face2_name, coord_indices in face_pairs:
+            face1, face2 = nodes_coords[face1_name], nodes_coords[face2_name]
+            face1_sorted, face2_sorted = match_faces(face1, face2, mesh_sens, coord_indices)
+            nodes_matched[face1_name] = face1_sorted
+            nodes_matched[face2_name] = face2_sorted
 
-        # Edge
-        edges = [nodes_matched[f'edge{i}'] for i in range(1, 13)]
-        # edge I-IV
-        for count, (i,j,k,l) in enumerate(zip(*edges[:4]), start=1):
-            nodeSetLabels = [f'Node_edge{idx}_{label}' for idx, label in enumerate([i, j, k, l], start=1)]
-            nodeSetLabel_I, nodeSetLabel_II, nodeSetLabel_III, nodeSetLabel_IV = nodeSetLabels
-            # This is the T_II-T_I=FAB equation.
-            eqEdgeName = 'T_II-T_I edge node '
-            eqName = eqEdgeName + str(count) + ' on Temp'
-            mdb.models[model_name].Equation(
-                name=eqName,
-                terms=((1.0, nodeSetLabel_II, 11),
-                    (-1.0, nodeSetLabel_I, 11),
-                    (-xDim, 'CONSTRAINTS DRIVER TX', 11)))
-            
-            # This is the T_III-T_I=FAB+FCD equation.
-            eqEdgeName = 'T_III-T_I edge node '
-            eqName = eqEdgeName + str(count) + ' on Temp'
-            mdb.models[model_name].Equation(
-                name=eqName,
-                terms=((1.0, nodeSetLabel_III, 11),
-                    (-1.0, nodeSetLabel_I, 11),
-                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
-                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)))
-            
-            # This is the T_IV-T_I=FCD equation.
-            eqEdgeName = 'T_IV-T_I edge node '
-            eqName = eqEdgeName + str(count) + ' on Temp'
-            mdb.models[model_name].Equation(
-                name=eqName,
-                terms=((1.0, nodeSetLabel_IV, 11),
-                    (-1.0, nodeSetLabel_I, 11),
-                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)))
+        # Matching and sorting of edges (edge1-edge4: z, edge5-edge8: y, edge9-edge12: x)
+        edge_groups = [
+        ['edge1', ['edge2', 'edge3', 'edge4'], 2],  # (z)
+        ['edge5', ['edge6', 'edge7', 'edge8'], 1],  # (y) 
+        ['edge9', ['edge10', 'edge11', 'edge12'], 0]  # (x)
+        ]
+        for edge1_name, other_edges, coord_index in edge_groups:
+            edge1 = nodes_coords[edge1_name]
+            edge1_sorted = list(edge1.keys())
 
-        # edge V-VIII
-        for count, (i,j,k,l) in enumerate(zip(*edges[4:8]), start=1):
-            nodeSetLabels = [f'Node_edge{idx}_{label}' for idx, label in enumerate([i, j, k, l], start=5)]
-            nodeSetLabel_V, nodeSetLabel_VI, nodeSetLabel_VII, nodeSetLabel_VIII = nodeSetLabels
-            # This is the T_VI-T_V=FAB equation.
-            eqEdgeName = 'T_VI-T_V edge node '
-            eqName = eqEdgeName + str(count) + ' on Temp'
-            mdb.models[model_name].Equation(
-                name=eqName,
-                terms=((1.0, nodeSetLabel_VI, 11),
-                    (-1.0, nodeSetLabel_V, 11),
-                    (-xDim, 'CONSTRAINTS DRIVER TX', 11)))
-            
-            # This is the T_VII-T_V=FAB+FEF equation.
-            eqEdgeName = 'T_VII-T_V edge node '
-            eqName = eqEdgeName + str(count) + ' on Temp'
-            mdb.models[model_name].Equation(
-                name=eqName,
-                terms=((1.0, nodeSetLabel_VII, 11),
-                    (-1.0, nodeSetLabel_V, 11),
-                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
-				    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
-            
-            # This is the T_VIII-T_V=FEF equation.
-            eqEdgeName = 'T_VIII-T_V edge node '
-            eqName = eqEdgeName + str(count) + ' on Temp'
-            mdb.models[model_name].Equation(
-                name=eqName,
-                terms=((1.0, nodeSetLabel_VIII, 11),
-                    (-1.0, nodeSetLabel_V, 11),
-                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
-            
-        # edge IX-XII
-        for count, (i,j,k,l) in enumerate(zip(*edges[8:]), start=1):
-            nodeSetLabels = [f'Node_edge{idx}_{label}' for idx, label in enumerate([i, j, k, l], start=9)]
-            nodeSetLabel_IX, nodeSetLabel_X, nodeSetLabel_XI, nodeSetLabel_XII = nodeSetLabels
-            # This is the T_X-T_IX=FCD equation.
-            eqEdgeName = 'T_X-T_IX edge node '
-            eqName = eqEdgeName + str(count) + ' on Temp'
-            mdb.models[model_name].Equation(
-                name=eqName,
-                terms=((1.0, nodeSetLabel_X, 11),
-                    (-1.0, nodeSetLabel_IX, 11),
-                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)))
-            
-            # This is the T_XI-T_IX=FCD+FEF equation.
-            eqEdgeName = 'T_XI-T_IX edge node '
-            eqName = eqEdgeName + str(count) + ' on Temp'
-            mdb.models[model_name].Equation(
-                name=eqName,
-                terms=((1.0, nodeSetLabel_XI, 11),
-                    (-1.0, nodeSetLabel_IX, 11),
-                    (-yDim, 'CONSTRAINTS DRIVER TY', 11),
-				    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
-            
-            # This is the T_XII-T_IX=FEF equation.
-            eqEdgeName = 'T_XII-T_IX edge node '
-            eqName = eqEdgeName + str(count) + ' on Temp'
-            mdb.models[model_name].Equation(
-                name=eqName,
-                terms=((1.0, nodeSetLabel_XII, 11),
-                    (-1.0, nodeSetLabel_IX, 11),
-                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
+            for edge_name in other_edges:
+                edge2 = nodes_coords[edge_name]
+                _, edge2_sorted = match_edges(edge1, edge2, mesh_sens, coord_index)
+                nodes_matched[edge_name] = edge2_sorted
 
+            nodes_matched[edge1_name] = edge1_sorted  #
 
-        # Face
-        faces = [nodes_matched[f'face{i}'] for i in range(1, 7)]
-        # face B-A
-        for count, (i, j) in enumerate(zip(*faces[:2]), start=1):
-            nodeSetLabel_A = f'Node_face1_{i}'
-            nodeSetLabel_B = f'Node_face2_{j}'
-            eqFaceName = 'T_B-T_A face node '
-            eqName = eqFaceName + str(count) + ' on Temp'
-            mdb.models[model_name].Equation(
-                name=eqName,
-                terms=((1.0, nodeSetLabel_B, 11),
-                    (-1.0, nodeSetLabel_A, 11),
-                    (-xDim, 'CONSTRAINTS DRIVER TX', 11)))
+        # Extract vertex information
+        vertex_list = ['vertex1', 'vertex2', 'vertex3', 'vertex4',
+                         'vertex5', 'vertex6','vertex7','vertex8'
+                        ]
+        for vertex_name in vertex_list:
+            nodes_matched[vertex_name] = list(nodes_coords[f'{vertex_name}'].keys())
 
-        # face D-C
-        for count, (i, j) in enumerate(zip(*faces[2:4]), start=1):
-            nodeSetLabel_C = f'Node_face3_{i}'
-            nodeSetLabel_D = f'Node_face4_{j}'
-            eqFaceName = 'T_D-T_C face node '
-            eqName = eqFaceName + str(count) + ' on Temp'
-            mdb.models[model_name].Equation(
-                name=eqName,
-                terms=((1.0, nodeSetLabel_D, 11),
-                    (-1.0, nodeSetLabel_C, 11),
-                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)))
-
-        # face F-E
-        # This is the T_F-T_E=FEF equation.
-        for count, (i, j) in enumerate(zip(*faces[4:]), start=1):
-            nodeSetLabel_E = f'Node_face5_{i}'
-            nodeSetLabel_F = f'Node_face6_{j}'
-            eqFaceName = 'T_F-T_E face node '
-            eqName = eqFaceName + str(count) + ' on Temp'
-            mdb.models[model_name].Equation(
-                name=eqName,
-                terms=((1.0, nodeSetLabel_F, 11),
-                    (-1.0, nodeSetLabel_E, 11),
-                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
-            
-        print ('Heat Conduction Boundary conditions have been defined') 
+        return nodes_matched
 
     @classmethod
-    def _set_PBC_et(cls, model_name: str, nodes_matched, dims: list):
+    def _classify_all_nodes(cls, nodeset, mesh_sens: float , dims: list):
+        '''
+        Classifies all of the mesh nodes into one of the following categories: 
+            - face node
+            - edge node
+            - vertex node
+            - other 
+
+
+        Parameters
+        ----------
+        nodeset : The nodeset objcect (from Abaqus)
+        mesh_sens : float
+            Mesh sensitivity
+        dims: list
+      
+
+        Returns
+        -------
+        None
+        '''
+        xDim, yDim, zDim = (dim * 0.5 for dim in dims)
+        boundaries = {
+            'max_x': xDim,
+            'max_y': yDim,
+            'max_z': zDim,
+            'min_x': -xDim,
+            'min_y': -yDim,
+            'min_z': -zDim,
+        }
+
+        nodes_coords = {}
+
+        for node in nodeset:
+            cls._classify_node(node, mesh_sens, boundaries, nodes_coords)
+
+        return nodes_coords
+    
+    @classmethod
+    def _classify_node(cls, node, mesh_sens, boundaries, nodes_coords):
+        '''
+        Classifies a mesh node into one of the following categories: 
+            - face node
+            - edge node
+            - vertex node
+            - other 
+        The classification is based on the node's proximity to the boundaries of 
+        the mesh within a certain sensitivity range.
+
+        Parameters
+        ----------
+        node : The mesh node object (from Abaqus)
+        boundaries : dict
+            A dictionary with the following structure:
+            - "min_x" : float
+            - "max_x" : float
+            - "min_y" : float
+            - "max_y" : float
+            - "min_z" : float
+            - "max_z" : float
+        mesh_sens : float
+            Mesh sensitivity
+
+        Returns
+        -------
+        None
+            The function performs classification but does not return any value.
+
+        '''
+        x, y, z = node.coordinates
+        label = int(node.label)
+
+        close_to_min_x = cls._is_close(x, boundaries['min_x'], mesh_sens)
+        close_to_max_x = cls._is_close(x, boundaries['max_x'], mesh_sens)
+        close_to_min_y = cls._is_close(y, boundaries['min_y'], mesh_sens)
+        close_to_max_y = cls._is_close(y, boundaries['max_y'], mesh_sens)
+        close_to_min_z = cls._is_close(z, boundaries['min_z'], mesh_sens)
+        close_to_max_z = cls._is_close(z, boundaries['max_z'], mesh_sens)
+
+        # Classify vertices
+        vertex_conditions = [
+            ('vertex1', close_to_min_x and close_to_min_y and close_to_min_z),
+            ('vertex2', close_to_max_x and close_to_min_y and close_to_min_z),
+            ('vertex3', close_to_max_x and close_to_max_y and close_to_min_z),
+            ('vertex4', close_to_min_x and close_to_max_y and close_to_min_z),
+            ('vertex5', close_to_min_x and close_to_min_y and close_to_max_z),
+            ('vertex6', close_to_max_x and close_to_min_y and close_to_max_z),
+            ('vertex7', close_to_max_x and close_to_max_y and close_to_max_z),
+            ('vertex8', close_to_min_x and close_to_max_y and close_to_max_z),
+        ]
+
+        for key, condition in vertex_conditions:
+            if condition:
+                if f'{key}' not in nodes_coords:
+                    nodes_coords[f'{key}'] = {}
+                nodes_coords[f'{key}'][label] = np.array([x, y, z])
+                return
+
+        edge_conditions = [
+            ('edge1', close_to_min_x and close_to_min_y and boundaries['min_z'] < z < boundaries['max_z']),
+            ('edge2', close_to_max_x and close_to_min_y and boundaries['min_z'] < z < boundaries['max_z']),
+            ('edge3', close_to_max_x and close_to_max_y and boundaries['min_z'] < z < boundaries['max_z']),
+            ('edge4', close_to_min_x and close_to_max_y and boundaries['min_z'] < z < boundaries['max_z']),
+            ('edge5', close_to_min_x and close_to_min_z and boundaries['min_y'] < y < boundaries['max_y']),
+            ('edge6', close_to_max_x and close_to_min_z and boundaries['min_y'] < y < boundaries['max_y']),
+            ('edge7', close_to_max_x and close_to_max_z and boundaries['min_y'] < y < boundaries['max_y']),
+            ('edge8', close_to_min_x and close_to_max_z and boundaries['min_y'] < y < boundaries['max_y']),
+            ('edge9', close_to_min_y and close_to_min_z and boundaries['min_x'] < x < boundaries['max_x']),
+            ('edge10', close_to_max_y and close_to_min_z and boundaries['min_x'] < x < boundaries['max_x']),
+            ('edge11', close_to_max_y and close_to_max_z and boundaries['min_x'] < x < boundaries['max_x']),
+            ('edge12', close_to_min_y and close_to_max_z and boundaries['min_x'] < x < boundaries['max_x']),
+        ]
+
+        for key, condition in edge_conditions:
+            if condition:
+                if f'{key}' not in nodes_coords:
+                    nodes_coords[f'{key}'] = {}
+                nodes_coords[f'{key}'][label] = np.array([x, y, z])
+                return
+
+        # Classify faces (exclude edge and vertex nodes)
+        face_conditions = [
+            ('face1', close_to_min_x and boundaries['min_y'] < y < boundaries['max_y'] and boundaries['min_z'] < z < boundaries['max_z']),
+            ('face2', close_to_max_x and boundaries['min_y'] < y < boundaries['max_y'] and boundaries['min_z'] < z < boundaries['max_z']),
+            ('face3', close_to_min_y and boundaries['min_x'] < x < boundaries['max_x'] and boundaries['min_z'] < z < boundaries['max_z']),
+            ('face4', close_to_max_y and boundaries['min_x'] < x < boundaries['max_x'] and boundaries['min_z'] < z < boundaries['max_z']),
+            ('face5', close_to_min_z and boundaries['min_x'] < x < boundaries['max_x'] and boundaries['min_y'] < y < boundaries['max_y']),
+            ('face6', close_to_max_z and boundaries['min_x'] < x < boundaries['max_x'] and boundaries['min_y'] < y < boundaries['max_y']),
+        ]
+
+        for key, condition in face_conditions:
+            if condition:
+                if f'{key}' not in nodes_coords:
+                    nodes_coords[f'{key}'] = {}
+                nodes_coords[f'{key}'][label] = np.array([x, y, z])
+
+    @classmethod
+    def _is_close(cls, value1, value2, tolerance):
+        '''
+        Checks if two values are approximately equal within a specified tolerance.
+
+        Parameters
+        ----------
+        value1 : float
+            The first value to compare.
+        value2 : float
+            The second value to compare.
+        tolerance : float
+            Allowable difference for values to be considered close.
+
+
+        Returns
+        -------
+        bool
+            True if values are close, False otherwise.
+        '''
+        return abs(value1 - value2) <= tolerance
+
+    @classmethod
+    def _round_to_precision(cls, value, precision):
+        '''
+        Rounds a value to the specified number of decimal places.
+
+        Parameters
+        ----------
+        value : float
+            The value to be rounded.
+        precision : int
+            The number of decimal places to round to.
+
+        Returns
+        -------
+        float
+            The rounded value.
+        '''   
+        return round(value, precision)
+
+    @staticmethod
+    def _get_instance_name(model_name: str):
+        return model_name + 'Instance'
+    
+    @staticmethod
+    def _get_part_name(model_name: str):
+        return model_name + 'Part'
+
+    @staticmethod
+    def _create_viewport(model_name):
+        unitCellViewport = session.Viewport(name=model_name)
+        unitCellViewport.makeCurrent()
+        unitCellViewport.maximize()
+
+    @classmethod
+    def viewport_display_et(cls, model_name: str, odb_file, load_vec=None):
+        '''
+        odb_file:
+        load_vec: loading vector
+
+        the order in frame is "x -> y -> xy -> yz -> zx" (String)
+        ''' 
+        def create_viewport_et(name, step, frame_index, variable_label, comp1,comp2, 
+        x_angle=270.0, y_angle=0.0, z_angle=270.0):
+            session.Viewport(
+                name=name,
+                titleStyle=CUSTOM,
+                customTitleString=name)
+            session.viewports[name].setValues(displayedObject=odb_file)
+            session.viewports[name].odbDisplay.setFrame(
+                step=step,
+                frame=frame_index)
+            
+            session.viewports[name].odbDisplay.display.setValues(
+                plotState=CONTOURS_ON_DEF)
+            session.viewports[name].odbDisplay.setPrimaryVariable(
+                variableLabel=variable_label,
+                outputPosition=INTEGRATION_POINT,
+                refinement=(comp1, comp2))
+            session.viewports[name].view.rotate(
+                mode=MODEL,
+                xAngle=x_angle,
+                yAngle=y_angle,
+                zAngle=z_angle,
+                drawImmediately=True)
+
+        if load_vec is None:
+            return
+        # name, step, variableLabel, refinement(comp1, comp2)
+        ViewportData = namedtuple('ViewportData', ['name', 'step', 'variable_label', 'comp1', 'comp2'])
+        viewport_data = [
+            ViewportData('Pure X load', 0, 'S', COMPONENT, 'S11'),
+            ViewportData('Pure Y load', 0, 'S', COMPONENT, 'S22'),
+            ViewportData('Pure Z load', 0, 'S', COMPONENT, 'S33'),
+            ViewportData('Shear YZ load', 0, 'S', COMPONENT, 'S23'),
+            ViewportData('Shear ZX load', 0, 'S', COMPONENT, 'S13'),
+            ViewportData('Shear XY load', 0, 'S', COMPONENT, 'S12'),
+            ViewportData('Temperature load', 1, 'S', INVARIANT, 'Mises'),
+        ]
+
+        
+        frame_index = 1
+        load_case_order = [index for index, _ in sorted(enumerate(viewport_data[:-1]), key=lambda x: x[1].name)]
+        for case_index in load_case_order:
+            if load_vec[case_index] != 0.0:
+                case_data = viewport_data[case_index]
+                create_viewport_et(case_data.name, case_data.step, frame_index, case_data.variable_label, case_data.comp1, case_data.comp2)
+                frame_index += 1
+        # temperature
+        if load_vec[-1] != 0.0:
+            tem_data = viewport_data[-1]
+            frame_index = 1
+            create_viewport_et(tem_data.name, tem_data.step, frame_index, tem_data.variable_label, tem_data.comp1, tem_data.comp2)
+       
+        load_case_order = [index for index, _ in sorted(enumerate(viewport_data), key=lambda x: x[1].name)]
+        # Position each viewport
+        viewPortIndexOffset = 0
+        for case_index in load_case_order:
+            if load_vec[case_index] != 0.0:
+                session.viewports[viewport_data[case_index].name].setValues(
+                    origin=(15.0 + 5.0 * viewPortIndexOffset, 10.0  - 10.0 * viewPortIndexOffset),
+                    width=155.0,
+                    height=110.0)
+                viewPortIndexOffset += 1
+
+
+
+    @classmethod
+    def create_report_json_et(cls, model_name: str, unit_cell: UnitCell, effective_props, scale: float):
+        file_name = model_name  + '_et_' + '.rpt'
+        converted_props = AbaqusUtilities._convert_float32_to_float64(effective_props)
+        data = {
+            'scale': scale,
+            'mesh_params': unit_cell.get_mesh_params(),
+            'geo_params_scaled': unit_cell.get_geo_params(),
+            'material_properties': unit_cell.get_material_properties(),
+            'effective_props': converted_props
+        }
+
+        with open(file_name, 'w', encoding='utf-8') as file:
+            json.dump(data, file, indent=4, ensure_ascii=False)
+
+    @staticmethod
+    def _convert_float32_to_float64(data):
+        if isinstance(data, np.ndarray): 
+            if data.dtype == np.float32: 
+                return data.astype(np.float64)  
+        elif isinstance(data, list): 
+            return [AbaqusUtilities._convert_float32_to_float64(item) if isinstance(item, np.float32) else item for item in data]
+        elif isinstance(data, dict):
+            return {key: AbaqusUtilities._convert_float32_to_float64(value) for key, value in data.items()}
+ 
+        elif isinstance(data, np.float32): 
+            return np.float64(data) 
+        return data
+
+
+    @classmethod
+    def _set_meshType(cls, model_name: str, eleType='C3D8'):
+        '''
+        Reset the grid cell type.
+        '''
+        eleType = AbaqusUtilities._get_eleType(eleType)
+        elemType1 = mesh.ElemType(elemCode=eleType, elemLibrary=STANDARD)
+        part_name = AbaqusUtilities._get_part_name(model_name)
+        model = mdb.models[model_name]
+        region = model.parts[part_name].elements[:]
+        model.parts[part_name].setElementType(regions=(region,), elemTypes=(elemType1,))
+    
+
+
+
+    @staticmethod
+    def _get_eleType(eleType: str):
+        '''
+        Convert the element type of the setting parameter
+        into the corresponding element type constant in abaqus
+        '''
+        
+        element_type_conversion ={
+            'C3D8': C3D8,
+            'C3D10': C3D10,
+            'C3D20': C3D20,
+            'DC3D8': DC3D8,
+            'DC3D10': DC3D10,
+            'DC3D20': DC3D20,
+            }
+        return element_type_conversion.get(eleType, C3D8)
+        
+
+class ElasticThermalAbaqusUtilities(AbaqusUtilities):
+    @classmethod
+    def set_PBC_et(cls, model_name: str, nodes_matched, dims: list):
         # The length of the whole unit cell model
         xDim, yDim, zDim = dims
  
@@ -947,305 +1145,10 @@ class AbaqusUtilities:
             amplitude=UNSET,
             distributionType=UNIFORM, 
             localCsys=None)	
-        print ('Boundary conditions have been defined') 
+        print ('Boundary conditions have been defined')
 
     @classmethod
-    def _create_nodeset(cls, model_name: str, nodes_matched):
-        '''
-        create NodeSet in Abaqus.
-        '''
-        instance_name = AbaqusUtilities._get_instance_name(model_name) 
-        assembly = mdb.models[model_name].rootAssembly
-        for name, labels in nodes_matched.items():
-            for label in labels:
-                assembly.SetFromNodeLabels(name=f'Node_{name}_{label}', nodeLabels=((instance_name,[label]),))
-      
-    @classmethod
-    def _nodes_matching(cls, nodes_coords, mesh_sens):
-        nodes_matched = {}
-        def match_faces(face1, face2, mesh_sens, coord_indices):
-            """
-            Matches the nodes on both faces and returns a sorted list of labels 
-            assuming there are no duplicate nodes in face1
-            """
-            face1_sorted = list(face1.keys())    
-            face2_sorted = []
-
-            precision = int(-np.log10(mesh_sens))
-
-            # Build a face2 dictionary for efficient lookup
-            face2_dict = {}
-            for j in face2.keys():
-                key = tuple(cls._round_to_precision(face2[j][index], precision) for index in coord_indices)  # 根据指定的坐标轴建立键值对
-                face2_dict[key] = j
-
-            # Matching
-            for i in face1_sorted:
-                key = tuple(cls._round_to_precision(face1[i][index], precision) for index in coord_indices)
-                if key in face2_dict:
-                    j = face2_dict[key]
-                    if all(cls._is_close(face1[i][index], face2[j][index], mesh_sens) for index in coord_indices):
-                        face2_sorted.append(j)
-
-            return face1_sorted, face2_sorted
-
-        def match_edges(edge1, edge2, mesh_sens, coord_index):
-            """
-            Matches nodes on two edges and returns the sorted lists of node labels.
-
-            Parameters
-            ----------
-            edge1 : dict
-                Dictionary of nodes on the first edge, where keys are node labels and values are coordinates.
-            edge2 : dict
-                Dictionary of nodes on the second edge, similar structure as edge1.
-            mesh_sens : float
-                Sensitivity value to determine if nodes are close enough to be considered matching.
-            coord_index : int
-                The index of the coordinate direction (0 for x, 1 for y, 2 for z) to compare.
-
-            Returns
-            -------
-            tuple
-                Two lists: one with sorted labels from edge1 and one with matching labels from edge2.
-            """
-            
-            edge1_sorted = list(edge1.keys())
-            edge2_sorted = []
-
-            for i in edge1_sorted:
-                for j in edge2.keys():
-                    if cls._is_close(edge1[i][coord_index], edge2[j][coord_index], mesh_sens):  # 只比较一个指定方向
-                        edge2_sorted.append(j)
-                        break
-
-            return edge1_sorted, edge2_sorted
-        # Matching and sorting of faces
-        face_pairs = [
-        ('face1', 'face2', (1, 2)),  # (y, z) 
-        ('face3', 'face4', (0, 2)),  # (x, z) 
-        ('face5', 'face6', (0, 1))   # (x, y) 
-        ]
-        for face1_name, face2_name, coord_indices in face_pairs:
-            face1, face2 = nodes_coords[face1_name], nodes_coords[face2_name]
-            face1_sorted, face2_sorted = match_faces(face1, face2, mesh_sens, coord_indices)
-            nodes_matched[face1_name] = face1_sorted
-            nodes_matched[face2_name] = face2_sorted
-
-        # Matching and sorting of edges (edge1-edge4: z, edge5-edge8: y, edge9-edge12: x)
-        edge_groups = [
-        ['edge1', ['edge2', 'edge3', 'edge4'], 2],  # (z)
-        ['edge5', ['edge6', 'edge7', 'edge8'], 1],  # (y) 
-        ['edge9', ['edge10', 'edge11', 'edge12'], 0]  # (x)
-        ]
-        for edge1_name, other_edges, coord_index in edge_groups:
-            edge1 = nodes_coords[edge1_name]
-            edge1_sorted = list(edge1.keys())
-
-            for edge_name in other_edges:
-                edge2 = nodes_coords[edge_name]
-                _, edge2_sorted = match_edges(edge1, edge2, mesh_sens, coord_index)
-                nodes_matched[edge_name] = edge2_sorted
-
-            nodes_matched[edge1_name] = edge1_sorted  #
-
-        # Extract vertex information
-        vertex_list = ['vertex1', 'vertex2', 'vertex3', 'vertex4',
-                         'vertex5', 'vertex6','vertex7','vertex8'
-                        ]
-        for vertex_name in vertex_list:
-            nodes_matched[vertex_name] = list(nodes_coords[f'{vertex_name}'].keys())
-
-        return nodes_matched
-
-    @classmethod
-    def _classify_all_nodes(cls, nodeset, mesh_sens: float , dims: list):
-        '''
-        Classifies all of the mesh nodes into one of the following categories: 
-            - face node
-            - edge node
-            - vertex node
-            - other 
-
-
-        Parameters
-        ----------
-        nodeset : The nodeset objcect (from Abaqus)
-        mesh_sens : float
-            Mesh sensitivity
-        dims: list
-      
-
-        Returns
-        -------
-        None
-        '''
-        xDim, yDim, zDim = (dim * 0.5 for dim in dims)
-        boundaries = {
-            'max_x': xDim,
-            'max_y': yDim,
-            'max_z': zDim,
-            'min_x': -xDim,
-            'min_y': -yDim,
-            'min_z': -zDim,
-        }
-
-        nodes_coords = {}
-
-        for node in nodeset:
-            cls._classify_node(node, mesh_sens, boundaries, nodes_coords)
-
-        return nodes_coords
-    
-    @classmethod
-    def _classify_node(cls, node, mesh_sens, boundaries, nodes_coords):
-        '''
-        Classifies a mesh node into one of the following categories: 
-            - face node
-            - edge node
-            - vertex node
-            - other 
-        The classification is based on the node's proximity to the boundaries of 
-        the mesh within a certain sensitivity range.
-
-        Parameters
-        ----------
-        node : The mesh node object (from Abaqus)
-        boundaries : dict
-            A dictionary with the following structure:
-            - "min_x" : float
-            - "max_x" : float
-            - "min_y" : float
-            - "max_y" : float
-            - "min_z" : float
-            - "max_z" : float
-        mesh_sens : float
-            Mesh sensitivity
-
-        Returns
-        -------
-        None
-            The function performs classification but does not return any value.
-
-        '''
-        x, y, z = node.coordinates
-        label = int(node.label)
-
-        close_to_min_x = cls._is_close(x, boundaries['min_x'], mesh_sens)
-        close_to_max_x = cls._is_close(x, boundaries['max_x'], mesh_sens)
-        close_to_min_y = cls._is_close(y, boundaries['min_y'], mesh_sens)
-        close_to_max_y = cls._is_close(y, boundaries['max_y'], mesh_sens)
-        close_to_min_z = cls._is_close(z, boundaries['min_z'], mesh_sens)
-        close_to_max_z = cls._is_close(z, boundaries['max_z'], mesh_sens)
-
-        # Classify vertices
-        vertex_conditions = [
-            ('vertex1', close_to_min_x and close_to_min_y and close_to_min_z),
-            ('vertex2', close_to_max_x and close_to_min_y and close_to_min_z),
-            ('vertex3', close_to_max_x and close_to_max_y and close_to_min_z),
-            ('vertex4', close_to_min_x and close_to_max_y and close_to_min_z),
-            ('vertex5', close_to_min_x and close_to_min_y and close_to_max_z),
-            ('vertex6', close_to_max_x and close_to_min_y and close_to_max_z),
-            ('vertex7', close_to_max_x and close_to_max_y and close_to_max_z),
-            ('vertex8', close_to_min_x and close_to_max_y and close_to_max_z),
-        ]
-
-        for key, condition in vertex_conditions:
-            if condition:
-                if f'{key}' not in nodes_coords:
-                    nodes_coords[f'{key}'] = {}
-                nodes_coords[f'{key}'][label] = np.array([x, y, z])
-                return
-
-        edge_conditions = [
-            ('edge1', close_to_min_x and close_to_min_y and boundaries['min_z'] < z < boundaries['max_z']),
-            ('edge2', close_to_max_x and close_to_min_y and boundaries['min_z'] < z < boundaries['max_z']),
-            ('edge3', close_to_max_x and close_to_max_y and boundaries['min_z'] < z < boundaries['max_z']),
-            ('edge4', close_to_min_x and close_to_max_y and boundaries['min_z'] < z < boundaries['max_z']),
-            ('edge5', close_to_min_x and close_to_min_z and boundaries['min_y'] < y < boundaries['max_y']),
-            ('edge6', close_to_max_x and close_to_min_z and boundaries['min_y'] < y < boundaries['max_y']),
-            ('edge7', close_to_max_x and close_to_max_z and boundaries['min_y'] < y < boundaries['max_y']),
-            ('edge8', close_to_min_x and close_to_max_z and boundaries['min_y'] < y < boundaries['max_y']),
-            ('edge9', close_to_min_y and close_to_min_z and boundaries['min_x'] < x < boundaries['max_x']),
-            ('edge10', close_to_max_y and close_to_min_z and boundaries['min_x'] < x < boundaries['max_x']),
-            ('edge11', close_to_max_y and close_to_max_z and boundaries['min_x'] < x < boundaries['max_x']),
-            ('edge12', close_to_min_y and close_to_max_z and boundaries['min_x'] < x < boundaries['max_x']),
-        ]
-
-        for key, condition in edge_conditions:
-            if condition:
-                if f'{key}' not in nodes_coords:
-                    nodes_coords[f'{key}'] = {}
-                nodes_coords[f'{key}'][label] = np.array([x, y, z])
-                return
-
-        # Classify faces (exclude edge and vertex nodes)
-        face_conditions = [
-            ('face1', close_to_min_x and boundaries['min_y'] < y < boundaries['max_y'] and boundaries['min_z'] < z < boundaries['max_z']),
-            ('face2', close_to_max_x and boundaries['min_y'] < y < boundaries['max_y'] and boundaries['min_z'] < z < boundaries['max_z']),
-            ('face3', close_to_min_y and boundaries['min_x'] < x < boundaries['max_x'] and boundaries['min_z'] < z < boundaries['max_z']),
-            ('face4', close_to_max_y and boundaries['min_x'] < x < boundaries['max_x'] and boundaries['min_z'] < z < boundaries['max_z']),
-            ('face5', close_to_min_z and boundaries['min_x'] < x < boundaries['max_x'] and boundaries['min_y'] < y < boundaries['max_y']),
-            ('face6', close_to_max_z and boundaries['min_x'] < x < boundaries['max_x'] and boundaries['min_y'] < y < boundaries['max_y']),
-        ]
-
-        for key, condition in face_conditions:
-            if condition:
-                if f'{key}' not in nodes_coords:
-                    nodes_coords[f'{key}'] = {}
-                nodes_coords[f'{key}'][label] = np.array([x, y, z])
-
-    @classmethod
-    def _is_close(cls, value1, value2, tolerance):
-        '''
-        Checks if two values are approximately equal within a specified tolerance.
-
-        Parameters
-        ----------
-        value1 : float
-            The first value to compare.
-        value2 : float
-            The second value to compare.
-        tolerance : float
-            Allowable difference for values to be considered close.
-
-
-        Returns
-        -------
-        bool
-            True if values are close, False otherwise.
-        '''
-        return abs(value1 - value2) <= tolerance
-
-    @classmethod
-    def _round_to_precision(cls, value, precision):
-        '''
-        Rounds a value to the specified number of decimal places.
-
-        Parameters
-        ----------
-        value : float
-            The value to be rounded.
-        precision : int
-            The number of decimal places to round to.
-
-        Returns
-        -------
-        float
-            The rounded value.
-        '''   
-        return round(value, precision)
-
-    @staticmethod
-    def _get_instance_name(model_name: str):
-        return model_name + 'Instance'
-    
-    @staticmethod
-    def _get_part_name(model_name: str):
-        return model_name + 'Part'
-
-    @classmethod
-    def create_steps(cls, model_name):
+    def create_steps_et(cls, model_name):
         # This function allows for more complex step set-up.
         mdb.models[model_name].StaticLinearPerturbationStep(
             name='Isothermal linear perturbation step',
@@ -1338,63 +1241,7 @@ class AbaqusUtilities:
         del mdb.models[model_name].fieldOutputRequests['F-Output-1']
 
     @classmethod
-    def create_steps_hc(cls, model_name):
-        # This function allows for more complex step set-up.
-        mdb.models[model_name].HeatTransferStep(amplitude=RAMP, 
-            name='Heat Transfer Step', 
-            previous='initial', response=STEADY_STATE)
-
-        # Define an an additional History output request for the Tx RP.
-        regionDef=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TX']
-        mdb.models[model_name].HistoryOutputRequest(name='Output Request Tx', 
-            createStepName='Heat Transfer Step', variables=('NT', ), region=regionDef, 
-            sectionPoints=DEFAULT, rebar=EXCLUDE)
-
-        # Define an an additional field output request for the Ty RP.
-        regionDef=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TY']
-        mdb.models[model_name].HistoryOutputRequest(name='Output Request Ty', 
-            createStepName='Heat Transfer Step', variables=('NT', ), region=regionDef, 
-            sectionPoints=DEFAULT, rebar=EXCLUDE)
-            
-        # Define an an additional field output request for the Tz RP.
-        regionDef=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TZ']
-        mdb.models[model_name].HistoryOutputRequest(name='Output Request Tz', 
-            createStepName='Heat Transfer Step', variables=('NT', ), region=regionDef, 
-            sectionPoints=DEFAULT, rebar=EXCLUDE)
-	
-        # Delete the default Field Output Request.
-        mdb.models[model_name].FieldOutputRequest(createStepName='Heat Transfer Step', 
-            name='Heat flux vector', variables=( 'HFL',))
-        del mdb.models[model_name].fieldOutputRequests['F-Output-1']
-
-    @classmethod
-    def apply_loads_hc(cls, model_name, load_vec=(1.0,)*3):
-        Tx, Ty, Tz = load_vec
-
-        # Setting up the concentrated Heat Flux.
-        if (Tx!=0.0):
-            mdb.models[model_name].ConcentratedHeatFlux(
-                createStepName='Heat Transfer Step', 
-                magnitude=Tx, 
-                name='Heat Flux on CONSTRAINTS DRIVER TX', 
-                region=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TX'])
-                
-        if (Ty!=0.0):
-            mdb.models[model_name].ConcentratedHeatFlux(
-                createStepName='Heat Transfer Step', 
-                magnitude=Ty, 
-                name='Heat Flux on CONSTRAINTS DRIVER TY', 
-                region=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TY'])
-        if (Tz!=0.0):
-            mdb.models[model_name].ConcentratedHeatFlux(
-                createStepName='Heat Transfer Step', 
-                magnitude=Tz, 
-                name='Heat Flux on CONSTRAINTS DRIVER TZ', 
-                region=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TZ'])
-  
-
-    @classmethod
-    def apply_loads(cls, model_name, load_vec=(1.0,)*7):
+    def apply_loads_et(cls, model_name, load_vec=(1.0,)*7):
         instance_name = AbaqusUtilities._get_instance_name(model_name) 
         assembly = mdb.models[model_name].rootAssembly
         nodes_label = [int(i.label) for i in assembly.allInstances[instance_name].nodes]
@@ -1529,7 +1376,7 @@ class AbaqusUtilities:
                 includeActiveBaseStateBC=ON)
 
     @classmethod
-    def submit_job(cls, model_name, load_vec=(1.0,)*7, display_in_viewport=True, job_params=None):
+    def submit_job_et(cls, model_name, load_vec=(1.0,)*7, display_in_viewport=True, job_params=None):
         job_name = model_name.replace(' ','_')
         mdb.Job(name=job_name,
 					model=model_name,
@@ -1552,251 +1399,26 @@ class AbaqusUtilities:
         fileName = job_name + '.odb'
         if display_in_viewport:
             resultODB = visualization.openOdb(path=fileName, readOnly=True)
-            cls.viewport_display(model_name, resultODB, load_vec)
+            cls.viewport_display_et(model_name, resultODB, load_vec)
         else:
             resultODB = odbAccess.openOdb(path=fileName)
         return resultODB
+   
+
     # need to be delete
     @classmethod
-    def get_odb(cls,model_name, load_vec=(1.0,)*7, display_in_viewport=True):
+    def get_odb_et(cls,model_name, load_vec=(1.0,)*7, display_in_viewport=True):
         job_name = model_name.replace(' ','_')
         fileName = job_name + '.odb'
         if display_in_viewport:
             resultODB = visualization.openOdb(path=fileName, readOnly=True)
-            cls.viewport_display(model_name, resultODB, load_vec)
-        else:
-            resultODB = odbAccess.openOdb(path=fileName)
-        return resultODB
-    @classmethod
-    def submit_job_hc(cls, model_name, load_vec=(1.0,)*7, display_in_viewport=True, job_params=None):
-        job_name = model_name.replace(' ','_') +'_hc'
-        mdb.Job(name=job_name,
-					model=model_name,
-					description='Applying concentrated forces(temperature) at the driving points',
-					type=ANALYSIS, 
-					atTime=None, waitMinutes=0, waitHours=0, queue=None,
-					memory=70, 
-					memoryUnits=PERCENTAGE, getMemoryFromAnalysis=True, 
-					explicitPrecision=SINGLE, nodalOutputPrecision=SINGLE,
-					echoPrint=OFF, modelPrint=OFF, contactPrint=OFF, historyPrint=OFF,
-					userSubroutine='', 
-					scratch='', parallelizationMethodExplicit=DOMAIN, 
-					multiprocessingMode=DEFAULT,
-					numDomains=4, numCpus=2)
-        # UnitCell._create_viewport(model_name)
-
-        mdb.jobs[job_name].submit(consistencyChecking=ON)
-        mdb.jobs[job_name].waitForCompletion()
-
-        fileName = job_name + '.odb'
-        if display_in_viewport:
-            resultODB = visualization.openOdb(path=fileName, readOnly=True)
-            cls.viewport_display(model_name, resultODB, load_vec)
-        else:
-            resultODB = odbAccess.openOdb(path=fileName)
-        return resultODB
-    # need to be delete
-    @classmethod
-    def get_odb(cls,model_name, load_vec=(1.0,)*7, display_in_viewport=True):
-        job_name = model_name.replace(' ','_') +'_hc'
-        fileName = job_name + '.odb'
-        if display_in_viewport:
-            resultODB = visualization.openOdb(path=fileName, readOnly=True)
-            cls.viewport_display(model_name, resultODB, load_vec)
+            cls.viewport_display_et(model_name, resultODB, load_vec)
         else:
             resultODB = odbAccess.openOdb(path=fileName)
         return resultODB
 
-    @staticmethod
-    def _create_viewport(model_name):
-        unitCellViewport = session.Viewport(name=model_name)
-        unitCellViewport.makeCurrent()
-        unitCellViewport.maximize()
-
     @classmethod
-    def viewport_display(cls, model_name: str, odb_file, load_vec=None):
-        '''
-        odb_file:
-        load_vec: loading vector
-
-        the order in frame is "x -> y -> xy -> yz -> zx" (String)
-        ''' 
-        def create_viewport(name, step, frame_index, variable_label, comp1,comp2, 
-        x_angle=270.0, y_angle=0.0, z_angle=270.0):
-            session.Viewport(
-                name=name,
-                titleStyle=CUSTOM,
-                customTitleString=name)
-            session.viewports[name].setValues(displayedObject=odb_file)
-            session.viewports[name].odbDisplay.setFrame(
-                step=step,
-                frame=frame_index)
-            
-            session.viewports[name].odbDisplay.display.setValues(
-                plotState=CONTOURS_ON_DEF)
-            session.viewports[name].odbDisplay.setPrimaryVariable(
-                variableLabel=variable_label,
-                outputPosition=INTEGRATION_POINT,
-                refinement=(comp1, comp2))
-            session.viewports[name].view.rotate(
-                mode=MODEL,
-                xAngle=x_angle,
-                yAngle=y_angle,
-                zAngle=z_angle,
-                drawImmediately=True)
-
-        if load_vec is None:
-            return
-        # name, step, variableLabel, refinement(comp1, comp2)
-        ViewportData = namedtuple('ViewportData', ['name', 'step', 'variable_label', 'comp1', 'comp2'])
-        viewport_data = [
-            ViewportData('Pure X load', 0, 'S', COMPONENT, 'S11'),
-            ViewportData('Pure Y load', 0, 'S', COMPONENT, 'S22'),
-            ViewportData('Pure Z load', 0, 'S', COMPONENT, 'S33'),
-            ViewportData('Shear YZ load', 0, 'S', COMPONENT, 'S23'),
-            ViewportData('Shear ZX load', 0, 'S', COMPONENT, 'S13'),
-            ViewportData('Shear XY load', 0, 'S', COMPONENT, 'S12'),
-            ViewportData('Temperature load', 1, 'S', INVARIANT, 'Mises'),
-        ]
-
-        
-        frame_index = 1
-        load_case_order = [index for index, _ in sorted(enumerate(viewport_data[:-1]), key=lambda x: x[1].name)]
-        for case_index in load_case_order:
-            if load_vec[case_index] != 0.0:
-                case_data = viewport_data[case_index]
-                create_viewport(case_data.name, case_data.step, frame_index, case_data.variable_label, case_data.comp1, case_data.comp2)
-                frame_index += 1
-        # temperature
-        if load_vec[-1] != 0.0:
-            tem_data = viewport_data[-1]
-            frame_index = 1
-            create_viewport(tem_data.name, tem_data.step, frame_index, tem_data.variable_label, tem_data.comp1, tem_data.comp2)
-       
-        load_case_order = [index for index, _ in sorted(enumerate(viewport_data), key=lambda x: x[1].name)]
-        # Position each viewport
-        viewPortIndexOffset = 0
-        for case_index in load_case_order:
-            if load_vec[case_index] != 0.0:
-                session.viewports[viewport_data[case_index].name].setValues(
-                    origin=(15.0 + 5.0 * viewPortIndexOffset, 10.0  - 10.0 * viewPortIndexOffset),
-                    width=155.0,
-                    height=110.0)
-                viewPortIndexOffset += 1
-
-    @classmethod
-    def viewport_display_hc(cls, model_name: str, odb_file, load_vec=None):
-        '''
-        odb_file:
-        load_vec: loading vector
-      
-        ''' 
-        def create_viewport(name, step, frame_index, variable_label, comp1,comp2, 
-        x_angle=270.0, y_angle=0.0, z_angle=270.0):
-            session.Viewport(
-                name=name,
-                titleStyle=CUSTOM,
-                customTitleString=name)
-            session.viewports[name].setValues(displayedObject=odb_file)
-            session.viewports[name].odbDisplay.display.setValues(
-                plotState=CONTOURS_ON_DEF)
-            session.viewports[name].odbDisplay.setPrimaryVariable(
-                variableLabel=variable_label,
-                outputPosition=INTEGRATION_POINT,
-                refinement=(comp1, comp2))
-            session.viewports[name].view.rotate(
-                mode=MODEL,
-                xAngle=x_angle,
-                yAngle=y_angle,
-                zAngle=z_angle,
-                drawImmediately=True)
-
-        if load_vec is None:
-            return
-        # name, step, variableLabel, refinement(comp1, comp2)
-        ViewportData = namedtuple('ViewportData', ['name', 'variable_label', 'comp1', 'comp2'])
-        viewport_data = [
-            ViewportData('Pure TX load', 'HFL', COMPONENT, 'HFL1'),
-            ViewportData('Pure TY load', 'HFL', COMPONENT, 'HFL2'),
-            ViewportData('Pure TZ load', 'HFL', COMPONENT, 'HFL3')
-        ]
-
-        
-        for i, data in enumerate(viewport_data):
-            if (load_vec[i] != 0.0):
-                create_viewport(data.name, data.variable_label, data.comp1, data.comp2)
-
-        session.viewports[model_name].restore()
-        session.viewports[model_name].setValues(
-			origin=(10.0, -105.0),
-			width=155.0,
-			height=110.0)
-        
-        viewPortIndexOffset = 0
-        for i, data in enumerate(viewport_data):
-            if (load_vec[i] != 0.0):
-                session.viewports[viewport_data[case_index].name].setValues(
-                    origin=(15.0 - 5.0 * viewPortIndexOffset, 60.0  - 10.0 * viewPortIndexOffset),
-                    width=155.0,
-                    height=110.0)
-                viewPortIndexOffset += 1 
-
-
-    @classmethod
-    def calc_effective_props_hc(cls, vol_unitcell: float, load_vec: list[float], odb_file, scale: float):
-        def get_displacement(frame, indices):
-            return [frame.fieldOutputs['U'].values[i].data[0] for i in indices]
-
-        def compute_modulus(load: float, vol_unitcell: float, F_eps0: float, scale: float):
-            return (load * scale * scale) / (vol_unitcell * F_eps0)
-
-        def compute_poisson_ratio(disp_num: float, disp_denom: float):
-            return -disp_num / disp_denom
-
-        Tx, Ty, Tz = load_vec
-        # Collect steps
-        HeatTransferStep = odb_file.steps.values()[0]
-        # Index 0 holds the reference frame.
-        step = odb_file.steps[HeatTransferStep.name]
-        Tx_incre = step.historyRegions['Node ASSEMBLY.7'].historyOutputs['NT11'].data[-1][1]			
-        Ty_incre = step.historyRegions['Node ASSEMBLY.8'].historyOutputs['NT11'].data[-1][1]	
-        Tz_incre = step.historyRegions['Node ASSEMBLY.9'].historyOutputs['NT11'].data[-1][1]	
-
-        K0_x = Tx / vol_unitcell / Tx_incre
-        K0_y = Ty / vol_unitcell / Ty_incre
-        K0_z = Tz / vol_unitcell / Tz_incre
-        
-        return {"k": [K0_x, K0_y, K0_z]}
-
-
-    @staticmethod
-    def save_effective_props_hc(model_name: str, effective_props):
-        k1, k2, k3 = effective_props['k']
-        props_data ={'k1': k1, 'k2': k2, 'k3': k3}
-
-        with open(f'{model_name}_effective_props_hc.csv', mode='w', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow(props_data.keys()) 
-            writer.writerow(props_data.values())
-
-    @classmethod
-    def create_report_json_hc(cls, model_name: str, unit_cell: UnitCell, effective_props, scale: float):
-        file_name = model_name + '_hc_' + '.rpt'
-        converted_props = AbaqusUtilities._convert_float32_to_float64(effective_props)
-        data = {
-            'scale': scale,
-            'mesh_params': unit_cell.get_mesh_params(),
-            'geo_params_scaled': unit_cell.get_geo_params(),
-            'material_properties': unit_cell.get_material_properties(),
-            'effective_props': converted_props
-        }
-
-        with open(file_name, 'w', encoding='utf-8') as file:
-            json.dump(data, file, indent=4, ensure_ascii=False)
-
-
-    @classmethod
-    def calc_effective_props(cls, vol_unitcell: float, load_vec: list[float], odb_file, scale: float):
+    def calc_effective_props_et(cls, vol_unitcell: float, load_vec: list[float], odb_file, scale: float):
         def get_displacement(frame, indices):
             return [frame.fieldOutputs['U'].values[i].data[0] for i in indices]
 
@@ -1862,10 +1484,9 @@ class AbaqusUtilities:
         }
         
         return effective_props
-
       
     @staticmethod
-    def save_effective_props(model_name: str, effective_props):
+    def save_effective_props_et(model_name: str, effective_props):
         E1, E2, E3 = effective_props['E']
         v12, v13, v23 = [effective_props['v'][i] for i in [0,1,3]]
         G23, G13, G12 = effective_props['G']
@@ -1883,13 +1504,424 @@ class AbaqusUtilities:
             writer.writerow(props_data.keys()) 
             writer.writerow(props_data.values())
 
+    
+class HeatConductionAbaqusUtilities(AbaqusUtilities):
     @classmethod
-    def create_report_json(cls, model_name: str, unit_cell: UnitCell, effective_props, scale: float):
-        file_name = model_name + '.rpt'
+    def set_PBC_hc(cls, model_name: str, nodes_matched, dims: list):
+        '''
+        # The 'Temp' equation (Abaqus coordinate 11)
+        '''
+        # The length of the whole unit cell model
+        xDim, yDim, zDim = dims
 
+        #  Vertex
+        vertex_names = [f'Node_vertex{i}_%s'%(nodes_matched[f'vertex{i}'][0]) for i in range(1,9)] 
+        vertex_equation_data = [
+            {
+                "name": "T2-T1 Master node on Temp",
+                "terms": (
+                    (1.0, vertex_names[1], 11),
+                    (-1.0, vertex_names[0], 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11)
+                )
+            },
+            {
+                "name": "T3-T1 Master node on Temp",
+                "terms": (
+                    (1.0, vertex_names[2], 11),
+                    (-1.0, vertex_names[0], 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)
+                )
+            },
+            {
+                "name": "T4-T1 Master node on Temp",
+                "terms": (
+                    (1.0, vertex_names[3], 11),
+                    (-1.0, vertex_names[0], 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)
+                )
+            },
+            {
+                "name": "T5-T1 Master node on Temp",
+                "terms": (
+                    (1.0, vertex_names[4], 11),
+                    (-1.0, vertex_names[0], 11),
+                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)
+                )
+            },
+            {
+                "name": "T6-T1 Master node on Temp",
+                "terms": (
+                    (1.0, vertex_names[5], 11),
+                    (-1.0, vertex_names[0], 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
+                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)
+                )
+            },
+            {
+                "name": "T7-T1 Master node on Temp",
+                "terms": (
+                    (1.0, vertex_names[6], 11),
+                    (-1.0, vertex_names[0], 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11),
+                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)
+                )
+            },
+            {
+                "name": "T8-T1 Master node on Temp",
+                "terms": (
+                    (1.0, vertex_names[7], 11),
+                    (-1.0, vertex_names[0], 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
+                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)
+                )
+            }
+        ]
+        for eq_data in vertex_equation_data:
+            mdb.models[model_name].Equation(
+                name=eq_data["name"],
+                terms=eq_data["terms"]
+            )
+
+        # Edge
+        edges = [nodes_matched[f'edge{i}'] for i in range(1, 13)]
+        # edge I-IV
+        for count, (i,j,k,l) in enumerate(zip(*edges[:4]), start=1):
+            nodeSetLabels = [f'Node_edge{idx}_{label}' for idx, label in enumerate([i, j, k, l], start=1)]
+            nodeSetLabel_I, nodeSetLabel_II, nodeSetLabel_III, nodeSetLabel_IV = nodeSetLabels
+            # This is the T_II-T_I=FAB equation.
+            eqEdgeName = 'T_II-T_I edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_II, 11),
+                    (-1.0, nodeSetLabel_I, 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11)))
+            
+            # This is the T_III-T_I=FAB+FCD equation.
+            eqEdgeName = 'T_III-T_I edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_III, 11),
+                    (-1.0, nodeSetLabel_I, 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)))
+            
+            # This is the T_IV-T_I=FCD equation.
+            eqEdgeName = 'T_IV-T_I edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_IV, 11),
+                    (-1.0, nodeSetLabel_I, 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)))
+
+        # edge V-VIII
+        for count, (i,j,k,l) in enumerate(zip(*edges[4:8]), start=1):
+            nodeSetLabels = [f'Node_edge{idx}_{label}' for idx, label in enumerate([i, j, k, l], start=5)]
+            nodeSetLabel_V, nodeSetLabel_VI, nodeSetLabel_VII, nodeSetLabel_VIII = nodeSetLabels
+            # This is the T_VI-T_V=FAB equation.
+            eqEdgeName = 'T_VI-T_V edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_VI, 11),
+                    (-1.0, nodeSetLabel_V, 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11)))
+            
+            # This is the T_VII-T_V=FAB+FEF equation.
+            eqEdgeName = 'T_VII-T_V edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_VII, 11),
+                    (-1.0, nodeSetLabel_V, 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11),
+				    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
+            
+            # This is the T_VIII-T_V=FEF equation.
+            eqEdgeName = 'T_VIII-T_V edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_VIII, 11),
+                    (-1.0, nodeSetLabel_V, 11),
+                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
+            
+        # edge IX-XII
+        for count, (i,j,k,l) in enumerate(zip(*edges[8:]), start=1):
+            nodeSetLabels = [f'Node_edge{idx}_{label}' for idx, label in enumerate([i, j, k, l], start=9)]
+            nodeSetLabel_IX, nodeSetLabel_X, nodeSetLabel_XI, nodeSetLabel_XII = nodeSetLabels
+            # This is the T_X-T_IX=FCD equation.
+            eqEdgeName = 'T_X-T_IX edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_X, 11),
+                    (-1.0, nodeSetLabel_IX, 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)))
+            
+            # This is the T_XI-T_IX=FCD+FEF equation.
+            eqEdgeName = 'T_XI-T_IX edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_XI, 11),
+                    (-1.0, nodeSetLabel_IX, 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11),
+				    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
+            
+            # This is the T_XII-T_IX=FEF equation.
+            eqEdgeName = 'T_XII-T_IX edge node '
+            eqName = eqEdgeName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_XII, 11),
+                    (-1.0, nodeSetLabel_IX, 11),
+                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
+
+
+        # Face
+        faces = [nodes_matched[f'face{i}'] for i in range(1, 7)]
+        # face B-A
+        for count, (i, j) in enumerate(zip(*faces[:2]), start=1):
+            nodeSetLabel_A = f'Node_face1_{i}'
+            nodeSetLabel_B = f'Node_face2_{j}'
+            eqFaceName = 'T_B-T_A face node '
+            eqName = eqFaceName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_B, 11),
+                    (-1.0, nodeSetLabel_A, 11),
+                    (-xDim, 'CONSTRAINTS DRIVER TX', 11)))
+
+        # face D-C
+        for count, (i, j) in enumerate(zip(*faces[2:4]), start=1):
+            nodeSetLabel_C = f'Node_face3_{i}'
+            nodeSetLabel_D = f'Node_face4_{j}'
+            eqFaceName = 'T_D-T_C face node '
+            eqName = eqFaceName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_D, 11),
+                    (-1.0, nodeSetLabel_C, 11),
+                    (-yDim, 'CONSTRAINTS DRIVER TY', 11)))
+
+        # face F-E
+        # This is the T_F-T_E=FEF equation.
+        for count, (i, j) in enumerate(zip(*faces[4:]), start=1):
+            nodeSetLabel_E = f'Node_face5_{i}'
+            nodeSetLabel_F = f'Node_face6_{j}'
+            eqFaceName = 'T_F-T_E face node '
+            eqName = eqFaceName + str(count) + ' on Temp'
+            mdb.models[model_name].Equation(
+                name=eqName,
+                terms=((1.0, nodeSetLabel_F, 11),
+                    (-1.0, nodeSetLabel_E, 11),
+                    (-zDim, 'CONSTRAINTS DRIVER TZ', 11)))
+            
+        print ('Heat Conduction Boundary conditions have been defined') 
+    
+    @classmethod
+    def create_steps_hc(cls, model_name):
+        # This function allows for more complex step set-up.
+        mdb.models[model_name].HeatTransferStep(name='Heat Transfer Step', 
+        previous='Initial', response=STEADY_STATE, amplitude=RAMP)
+        # Define an an additional History output request for the Tx RP.
+        regionDef=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TX']
+        mdb.models[model_name].HistoryOutputRequest(name='Output Request Tx', 
+            createStepName='Heat Transfer Step', variables=('NT', ), region=regionDef, 
+            sectionPoints=DEFAULT, rebar=EXCLUDE)
+
+        # Define an an additional field output request for the Ty RP.
+        regionDef=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TY']
+        mdb.models[model_name].HistoryOutputRequest(name='Output Request Ty', 
+            createStepName='Heat Transfer Step', variables=('NT', ), region=regionDef, 
+            sectionPoints=DEFAULT, rebar=EXCLUDE)
+            
+        # Define an an additional field output request for the Tz RP.
+        regionDef=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TZ']
+        mdb.models[model_name].HistoryOutputRequest(name='Output Request Tz', 
+            createStepName='Heat Transfer Step', variables=('NT', ), region=regionDef, 
+            sectionPoints=DEFAULT, rebar=EXCLUDE)
+	
+        # Delete the default Field Output Request.
+        mdb.models[model_name].FieldOutputRequest(createStepName='Heat Transfer Step', 
+            name='Heat flux vector', variables=( 'HFL',))
+        del mdb.models[model_name].fieldOutputRequests['F-Output-1']
+
+    @classmethod
+    def apply_loads_hc(cls, model_name, load_vec=(1.0,)*3):
+        Tx, Ty, Tz = load_vec
+        # Setting up the concentrated Heat Flux.
+        if (Tx!=0.0):
+            mdb.models[model_name].ConcentratedHeatFlux(
+                createStepName='Heat Transfer Step', 
+                magnitude=Tx, 
+                name='Heat Flux on CONSTRAINTS DRIVER TX', 
+                region=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TX'])
+                
+        if (Ty!=0.0):
+            mdb.models[model_name].ConcentratedHeatFlux(
+                createStepName='Heat Transfer Step', 
+                magnitude=Ty, 
+                name='Heat Flux on CONSTRAINTS DRIVER TY', 
+                region=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TY'])
+        if (Tz!=0.0):
+            mdb.models[model_name].ConcentratedHeatFlux(
+                createStepName='Heat Transfer Step', 
+                magnitude=Tz, 
+                name='Heat Flux on CONSTRAINTS DRIVER TZ', 
+                region=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TZ'])
+  
+    @classmethod
+    def submit_job_hc(cls, model_name, load_vec=(1.0,)*7, display_in_viewport=True, job_params=None):
+        job_name = model_name.replace(' ','_') +'_hc'
+        mdb.Job(name=job_name,
+					model=model_name,
+					description='Applying concentrated forces(temperature) at the driving points',
+					type=ANALYSIS, 
+					atTime=None, waitMinutes=0, waitHours=0, queue=None,
+					memory=70, 
+					memoryUnits=PERCENTAGE, getMemoryFromAnalysis=True, 
+					explicitPrecision=SINGLE, nodalOutputPrecision=SINGLE,
+					echoPrint=OFF, modelPrint=OFF, contactPrint=OFF, historyPrint=OFF,
+					userSubroutine='', 
+					scratch='', parallelizationMethodExplicit=DOMAIN, 
+					multiprocessingMode=DEFAULT,
+					numDomains=4, numCpus=2)
+        # UnitCell._create_viewport(model_name)
+
+        mdb.jobs[job_name].submit(consistencyChecking=ON)
+        mdb.jobs[job_name].waitForCompletion()
+
+        fileName = job_name + '.odb'
+        if display_in_viewport:
+            resultODB = visualization.openOdb(path=fileName, readOnly=True)
+            cls.viewport_display_hc(model_name, resultODB, load_vec)
+        else:
+            resultODB = odbAccess.openOdb(path=fileName)
+        return resultODB
+    
+    # need to be delete
+    @classmethod
+    def get_odb_hc(cls,model_name, load_vec=(1.0,)*7, display_in_viewport=True):
+        job_name = model_name.replace(' ','_') +'_hc'
+        fileName = job_name + '.odb'
+        if display_in_viewport:
+            resultODB = visualization.openOdb(path=fileName, readOnly=True)
+            cls.viewport_display_hc(model_name, resultODB, load_vec)
+        else:
+            resultODB = odbAccess.openOdb(path=fileName)
+        return resultODB
+  
+
+
+    @classmethod
+    def _set_meshType_hc(cls, model_name: str, eleType='C3D8'):
+        '''
+        Reset the mesh element type to thermal conductivity mesh elements.
+        ''' 
+        element_type_conversion ={
+            'C3D8': 'DC3D8',
+            'C3D10': 'DC3D10',
+            'C3D20': 'DC3D20'
+            }
+        cls._set_meshType(model_name, element_type_conversion[eleType])
+        
+   
+
+    @classmethod
+    def viewport_display_hc(cls, model_name: str, odb_file, load_vec=None):
+        '''
+        odb_file:
+        load_vec: loading vector
+      
+        ''' 
+        def create_viewport_hc(name, variable_label, comp1,comp2, 
+        x_angle=270.0, y_angle=0.0, z_angle=270.0):
+            session.Viewport(
+                name=name,
+                titleStyle=CUSTOM,
+                customTitleString=name)
+            session.viewports[name].setValues(displayedObject=odb_file)
+            session.viewports[name].odbDisplay.display.setValues(
+                plotState=CONTOURS_ON_DEF)
+            session.viewports[name].odbDisplay.setPrimaryVariable(
+                variableLabel=variable_label,
+                outputPosition=INTEGRATION_POINT,
+                refinement=(comp1, comp2))
+            session.viewports[name].view.rotate(
+                mode=MODEL,
+                xAngle=x_angle,
+                yAngle=y_angle,
+                zAngle=z_angle,
+                drawImmediately=True)
+
+        if load_vec is None:
+            return
+        # name, step, variableLabel, refinement(comp1, comp2)
+        ViewportData = namedtuple('ViewportData', ['name', 'variable_label', 'comp1', 'comp2'])
+        viewport_data = [
+            ViewportData('Pure TX load', 'HFL', COMPONENT, 'HFL1'),
+            ViewportData('Pure TY load', 'HFL', COMPONENT, 'HFL2'),
+            ViewportData('Pure TZ load', 'HFL', COMPONENT, 'HFL3')
+        ]
+
+        
+        for i, data in enumerate(viewport_data):
+            if (load_vec[i] != 0.0):
+                create_viewport_hc(data.name, data.variable_label, data.comp1, data.comp2)
+
+        session.viewports[model_name].restore()
+        session.viewports[model_name].setValues(
+			origin=(10.0, -105.0),
+			width=155.0,
+			height=110.0)
+        
+        viewPortIndexOffset = 0
+        for i, data in enumerate(viewport_data):
+            if (load_vec[i] != 0.0):
+                session.viewports[viewport_data[case_index].name].setValues(
+                    origin=(15.0 - 5.0 * viewPortIndexOffset, 60.0  - 10.0 * viewPortIndexOffset),
+                    width=155.0,
+                    height=110.0)
+                viewPortIndexOffset += 1 
+
+    @classmethod
+    def calc_effective_props_hc(cls, vol_unitcell: float, load_vec: list[float], odb_file, scale: float):
+        Tx, Ty, Tz = load_vec
+        # Collect steps
+        HeatTransferStep = odb_file.steps.values()[0]
+        # Index 0 holds the reference frame.
+        step = odb_file.steps[HeatTransferStep.name]
+        Tx_incre = step.historyRegions['Node ASSEMBLY.7'].historyOutputs['NT11'].data[-1][1]			
+        Ty_incre = step.historyRegions['Node ASSEMBLY.8'].historyOutputs['NT11'].data[-1][1]	
+        Tz_incre = step.historyRegions['Node ASSEMBLY.9'].historyOutputs['NT11'].data[-1][1]	
+
+        K0_x = Tx / vol_unitcell / Tx_incre
+        K0_y = Ty / vol_unitcell / Ty_incre
+        K0_z = Tz / vol_unitcell / Tz_incre
+        
+        return {"k": [K0_x, K0_y, K0_z]}
+
+    @staticmethod
+    def save_effective_props_hc(model_name: str, effective_props):
+        k1, k2, k3 = effective_props['k']
+        props_data ={'k1': k1, 'k2': k2, 'k3': k3}
+
+        with open(f'{model_name}_effective_props_hc.csv', mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(props_data.keys()) 
+            writer.writerow(props_data.values())
+
+    @classmethod
+    def create_report_json_hc(cls, model_name: str, unit_cell: UnitCell, effective_props, scale: float):
+        file_name = model_name + '_hc_' + '.rpt'
         converted_props = AbaqusUtilities._convert_float32_to_float64(effective_props)
-
-
         data = {
             'scale': scale,
             'mesh_params': unit_cell.get_mesh_params(),
@@ -1901,26 +1933,7 @@ class AbaqusUtilities:
         with open(file_name, 'w', encoding='utf-8') as file:
             json.dump(data, file, indent=4, ensure_ascii=False)
 
-    @staticmethod
-    def _convert_float32_to_float64(data):
-        if isinstance(data, np.ndarray): 
-            if data.dtype == np.float32: 
-                return data.astype(np.float64)  
-        elif isinstance(data, list): 
-            return [AbaqusUtilities._convert_float32_to_float64(item) if isinstance(item, np.float32) else item for item in data]
-        elif isinstance(data, dict):
-            return {key: AbaqusUtilities._convert_float32_to_float64(value) for key, value in data.items()}
- 
-        elif isinstance(data, np.float32): 
-            return np.float64(data) 
-        return data
 
-
-class ElasticThermalAbaqusUtilities(AbaqusUtilities):
-    pass
-
-class HeatConductionAbaqusUtilities(AbaqusUtilities):
-    pass
 
 class BCCAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtilities):
     @staticmethod
@@ -1936,7 +1949,7 @@ class BCCAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtil
         xDimension, yDimension, zDimension = (geo_params_scaled[k] * 0.5 for k in ['dimX', 'dimY', 'dimZ'])
         radiusInter = geo_params_scaled['radiusInter']
         radiusExter_x, radiusExter_y, radiusExter_z = (geo_params_scaled[k] for k in ['radiusExter_x', 'radiusExter_y', 'radiusExter_z'])
-
+        eleType = AbaqusUtilities._get_eleType(mesh_params_scaled['eleType'])
         Mdb()
         model = mdb.Model(name=model_name)
         if(model_name != 'Model-1'):
@@ -2130,7 +2143,7 @@ class BCCAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtil
         partBCC_Cell_1_8.setMeshControls(elemShape=TET, regions=
                 partBCC_Cell_1_8.cells, technique=FREE)
 
-        elemType1 = mesh.ElemType(elemCode=C3D10, elemLibrary=STANDARD)
+        elemType1 = mesh.ElemType(elemCode=eleType, elemLibrary=STANDARD)
         partBCC_Cell_1_8.setElementType(regions=(partBCC_Cell_1_8.cells,), elemTypes=(elemType1,))
         partBCC_Cell_1_8.generateMesh()
 
@@ -2159,7 +2172,7 @@ class BCCAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtil
         del model.parts['MeshPartBCC_1_4']
         del model.parts['MeshPartBCC_1_2']
 
-class CubeAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtilities):
+class CuboidAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtilities):
     @staticmethod
     def create_model(model_name: str, geo_params_scaled: Dict[str, float], mesh_params_scaled: Dict[str, float]):
         """
@@ -2190,7 +2203,6 @@ class CubeAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUti
             dimensionality=THREE_D,
             type=DEFORMABLE_BODY)
         partCube_1_8.BaseSolidExtrude(sketch=skCube_1_8, depth=zDimension)
-
         assembly = model.rootAssembly
       # ______________________________ #
         deviationFactor = mesh_params_scaled['deviationFactor']
@@ -2201,10 +2213,9 @@ class CubeAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUti
         partCube_1_8.setMeshControls(elemShape=TET, regions=
                 partCube_1_8.cells, technique=FREE)
 
-        elemType1 = mesh.ElemType(elemCode=C3D10, elemLibrary=STANDARD)
+        elemType1 = mesh.ElemType(elemCode=eleType, elemLibrary=STANDARD)
         partCube_1_8.setElementType(regions=(partCube_1_8.cells,), elemTypes=(elemType1,))
         partCube_1_8.generateMesh()
-
 
         partMeshCube_1_8= partCube_1_8.PartFromMesh(name='MeshPartCube_1_8', copySets=True)
 
@@ -2242,7 +2253,7 @@ class AbaqusUtilityFactory:
         if isinstance(unit_cell, BCCUnitCell):
             return BCCAbaqusUtilities()
         if isinstance(unit_cell, CubeUnitCell):
-            return CubeAbaqusUtilities()
+            return CuboidAbaqusUtilities()
         elif isinstance(unit_cell, FCCUnitCell):
             return FCCAbaqusUtilities()
         else:

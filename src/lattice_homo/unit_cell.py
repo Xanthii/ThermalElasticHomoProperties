@@ -6,10 +6,50 @@ import numpy as np
 
 @dataclass
 class UnitCell:
+    '''
+    A base class representing the basic properties and methods of a unit cell
+    in multi-scale structural design. The class defines parameters for geometry, 
+    mesh configuration, material properties, and a scaling mechanism.
+
+    Parameters
+    ----------
+        model_name : str
+            The name of the cell
+        geo_params : dict 
+            A dictionary of geometric parameters according to cell type
+        mesh_params : dict 
+            A dictionary of mesh parameters with the following structure:
+            - "deviationFactor" : float
+            - "minSizeFactor" : float
+            - "meshSens" : float
+            - "meshSize" : float
+            - "eleType" : str
+        material_properties : dict 
+            A dictionary of material properties with the following structure:
+            - "name" : str
+            - "type" : str
+            - "E" : float
+            - "nu" : float
+            - "CTE" : float
+            - "k" : float
+    '''
+ 
     model_name: str
     geo_params: Dict[str, float]
-    mesh_params: Dict[str, float]
+    mesh_params: Dict[str, Any]
     material_properties: Dict[str, Any]
+
+    def __post_init__(self):
+        # Merge provided material_properties with defaults
+        default_material_properties = {
+            "name": "Material-1",
+            "type": "ISOTROPIC",
+            "E": 1.0,
+            "nu": 0.3,
+            "CTE": 0.0,
+            "k": 0.0
+        }
+        self.material_properties = {**default_material_properties, **self.material_properties}
 
 
     def get_geo_params(self) -> Dict[str, Dict[str, Any]]:
@@ -38,12 +78,28 @@ class UnitCell:
     
 @dataclass
 class BCCUnitCell(UnitCell):
+    '''
+    A subclass of UnitCell representing a Body-Centered Cubic (BCC) unit cell.
+    This class implements specific geometric and mesh parameter handling
+    tailored to BCC unit cell structures.
+
+    geo_params : dict 
+        A dictionary of geometric parameters with the following structure:
+        - "dimX" : float
+        - "dimY" : float
+        - "dimZ" : float
+        - "radiusInter" : float
+        - "radiusExter_x" : float
+        - "radiusExter_y" : float
+        - "radiusExter_z" : float
+    '''
     def __post_init__(self):
+        super().__post_init__()
+
         required_keys = ["dimX", "radiusInter", "radiusExter_x"]
         for key in required_keys:
             if key not in self.geo_params:
                 raise ValueError(f"Missing required geo_param: {key}")
-   
 
         if 'dimY' not in self.geo_params:
             self.geo_params['dimY'] = self.geo_params['dimX']
@@ -73,7 +129,18 @@ class OCTUnitCell(UnitCell):
 
 
 @dataclass
-class CubeUnitCell(UnitCell):
+class CuboidUnitCell(UnitCell):
+    '''
+    A subclass of UnitCell representing a Cuboid unit cell.
+    This class implements specific geometric and mesh parameter handling
+    tailored to Cuboid unit cell structures.
+
+    geo_params : dict 
+        A dictionary of geometric parameters with the following structure:
+        - "dimX" : float
+        - "dimY" : float
+        - "dimZ" : float
+    '''
     def __post_init__(self):
         required_keys = ["dimX"]
         for key in required_keys:
