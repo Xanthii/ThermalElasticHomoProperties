@@ -760,19 +760,50 @@ class AbaqusUtilities:
         
 
     @staticmethod
-    def reset_abaqus():
+    def reset_abaqus_environment():
         '''
         Reset the whole Abaqus data
         Delete and close the ode file.
         Open a new model database.
         '''
+        for odb_name in list(session.odbs.keys()):
+            session.odbs[odb_name].close()
+        Mdb()
 
-    def reset_model():
+    @staticmethod
+    def clear_model_analysis_setup(model_name:str):
         '''
         reset the setting of abaqus.
         Delete and close the ode file.
         Clear the all of the Loads&BC, Steps, Jobs etc.
         '''
+        for load_name in list(mdb.models[model_name].loads.keys()):
+            del mdb.models[model_name].loads[load_name]
+
+        for bc_name in list(mdb.models[model_name].boundaryConditions.keys()):
+            del mdb.models[model_name].boundaryConditions[bc_name]
+
+        for constraint_name in list(mdb.models[model_name].constraints.keys()):
+            del mdb.models[model_name].constraints[constraint_name]
+
+        for step_name in list(mdb.models[model_name].steps.keys()):
+            if step_name != 'Initial':
+                del mdb.models[model_name].steps[step_name]
+
+        for h_output in list(mdb.models[model_name].historyOutputRequests.keys()):
+            del mdb.models[model_name].historyOutputRequests[h_output]
+
+        for f_output in list(mdb.models[model_name].fieldOutputRequests.keys()):
+            del mdb.models[model_name].fieldOutputRequests[f_output]
+
+        for job_name in list(mdb.jobs.keys()):
+            del mdb.jobs[job_name]
+
+        for field_name in list(mdb.models[model_name].predefinedFields.keys()):
+            del mdb.models[model_name].predefinedFields[field_name]
+
+        for odb_name in list(session.odbs.keys()):
+            session.odbs[odb_name].close()
 
 
 class ThermalElasticAbaqusUtilities(AbaqusUtilities):
@@ -1621,7 +1652,7 @@ class ThermalElasticAbaqusUtilities(AbaqusUtilities):
         resultODB : OdbObject
             The output database (ODB) file of the analysis.
         """
-        job_name = model_name.replace(' ','_')
+        job_name = model_name.replace(' ','_') + '_te'
         mdb.Job(name=job_name,
 					model=model_name,
 					description='Applying concentrated forces at the driving points',
@@ -1803,7 +1834,7 @@ class ThermalElasticAbaqusUtilities(AbaqusUtilities):
         resultODB : OdbObject
             The output database file.
         """
-        job_name = model_name.replace(' ','_')
+        job_name = model_name.replace(' ','_') + '_te'
         fileName = job_name + '.odb'
         if display_in_viewport:
             resultODB = visualization.openOdb(path=fileName, readOnly=True)
