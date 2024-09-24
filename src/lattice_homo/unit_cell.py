@@ -120,10 +120,11 @@ class BCCUnitCell(UnitCell):
                                             / num_node_shortest_side
         self._apply_geo_scaling()
 
-
+@dataclass
 class FCCUnitCell(UnitCell):
     pass
-        
+
+@dataclass       
 class OCTUnitCell(UnitCell):
     pass
 

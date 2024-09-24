@@ -13,45 +13,50 @@ class ProblemTypeStrategy(ABC):
 
     @classmethod
     @abstractmethod
-    def solve(self, model_name: str, unit_cell: UnitCell):
+    def solve(cls, model_name: str, unit_cell: UnitCell):
         pass
+    
+    @classmethod
+    def reset(cls):
+        cls._nodes_matched_cache = None
+        cls._is_other_analysis_done = False
 
-class ElasticThermalStrategy(ProblemTypeStrategy):
+class ThermalElasticStrategy(ProblemTypeStrategy):
     @classmethod
     def solve(cls, unit_cell: UnitCell, load_vec=[1.0]*7, display_in_viewport=True):
         # Abaqus script dealing with elastic thermodynamics
         model_name = unit_cell.model_name
         scale = unit_cell.get_scale()
-        geo_params_scaled = {k: v * scale for k, v in unit_cell.get_geo_params().items()}
-        
+        geo_params_scaled = {k: v * scale for k, v in unit_cell.get_geo_params().items()}  
         mesh_params_scaled = {
             k: (v * scale if k in ["meshSens", "meshSize"] else v)
             for k, v in unit_cell.get_mesh_params().items()
             }
         material_properties =  unit_cell.get_material_properties()
         mesh_sens = mesh_params_scaled['meshSens']
-        
+        eleType = mesh_params_scaled['eleType']
         dims = [geo_params_scaled[k] for k in ['dimX', 'dimY', 'dimZ']]
+
         vol_unitcell = math.prod(dims)
         load_vec = [i * vol_unitcell for i in load_vec]
         load_vec[-1] = load_vec[-1] / vol_unitcell
-
-        abaqus_utilities = AbaqusUtilityFactory.get_utilities(unit_cell)
-        
+        abaqus_utilities = AbaqusUtilityFactory.get_utilities(unit_cell)      
         if not cls._is_other_analysis_done:
             abaqus_utilities.create_model(model_name, geo_params_scaled, mesh_params_scaled)
             abaqus_utilities.assign_material(model_name, material_properties, scale)
             abaqus_utilities.reference_points(model_name)
             cls._nodes_matched_cache = abaqus_utilities.setup_nodes(model_name, mesh_sens, dims)
-
         nodes_matched = cls._nodes_matched_cache
-        abaqus_utilities.set_PBC_et(model_name, nodes_matched, dims)
-        abaqus_utilities.create_steps_et(model_name)
-        abaqus_utilities.apply_loads_et(model_name, load_vec)
-        result_odb = abaqus_utilities.submit_job_et(model_name, load_vec, display_in_viewport)
-        effective_props = abaqus_utilities.calc_effective_props_et(vol_unitcell, load_vec, result_odb, scale)
-        abaqus_utilities.save_effective_props_et(model_name, effective_props)
-        abaqus_utilities.create_report_json_et(model_name, unit_cell, effective_props,  scale)
+        cls._is_other_analysis_done = True
+
+        abaqus_utilities.set_meshType_te(model_name, eleType)
+        abaqus_utilities.set_PBC_te(model_name, nodes_matched, dims)
+        abaqus_utilities.create_steps_te(model_name)
+        abaqus_utilities.apply_loads_te(model_name, load_vec)
+        result_odb = abaqus_utilities.submit_job_te(model_name, load_vec, display_in_viewport)
+        effective_props = abaqus_utilities.calc_effective_props_te(vol_unitcell, load_vec, result_odb, scale)
+        abaqus_utilities.save_effective_props_te(model_name, effective_props)
+        abaqus_utilities.create_report_json_te(model_name, unit_cell, effective_props,  scale)
 
 
 
@@ -80,15 +85,12 @@ class ElasticThermalStrategy(ProblemTypeStrategy):
         abaqus_utilities.create_report_json(model_name, unit_cell, effective_props, scale)
 
 
-
-
 class HeatConductionStrategy(ProblemTypeStrategy):
     @classmethod
     def solve(cls, unit_cell: UnitCell, load_vec=[1.0]*3, display_in_viewport=True):
         model_name = unit_cell.model_name
         scale = unit_cell.get_scale()
         geo_params_scaled = {k: v * scale for k, v in unit_cell.get_geo_params().items()}
-        
         mesh_params_scaled = {
             k: (v * scale if k in ["meshSens", "meshSize"] else v)
             for k, v in unit_cell.get_mesh_params().items()
@@ -97,20 +99,19 @@ class HeatConductionStrategy(ProblemTypeStrategy):
         mesh_sens = mesh_params_scaled['meshSens']
         eleType = mesh_params_scaled['eleType']
         dims = [geo_params_scaled[k] for k in ['dimX', 'dimY', 'dimZ']]
+
         vol_unitcell = math.prod(dims)
         load_vec = [i * vol_unitcell for i in load_vec]
-
         abaqus_utilities = AbaqusUtilityFactory.get_utilities(unit_cell)
-
-        
         if not cls._is_other_analysis_done:
             abaqus_utilities.create_model(model_name, geo_params_scaled, mesh_params_scaled)
             abaqus_utilities.assign_material(model_name, material_properties, scale)
             abaqus_utilities.reference_points(model_name)
             cls._nodes_matched_cache = abaqus_utilities.setup_nodes(model_name, mesh_sens, dims)
-        print('here')
-        abaqus_utilities.set_meshType_hc(model_name, eleType)
         nodes_matched = cls._nodes_matched_cache
+        cls._is_other_analysis_done = True
+        
+        abaqus_utilities.set_meshType_hc(model_name, eleType)
         abaqus_utilities.set_PBC_hc(model_name, nodes_matched, dims)
         abaqus_utilities.create_steps_hc(model_name)
         abaqus_utilities.apply_loads_hc(model_name, load_vec)

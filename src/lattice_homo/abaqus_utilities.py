@@ -39,20 +39,52 @@ import json
 from collections import namedtuple
 class AbaqusUtilities:
     '''
-    Static class library 
-    Provides static methods for executing abaqus scripts 
-    This class contains generic methods
+    Static utility class for executing generic Abaqus scripts.
+
+    This class provides common static methods that can be reused across various 
+    Abaqus analysis types. It includes generic functions for handling mesh, loads, 
+    and boundary conditions, among others.
+
     '''
+
+    @staticmethod
+    def assign_material(model_name: str, material_properties: Dict[str, Any], scale: float):
+        '''
+        Abaqus script to assign material properties to the model, including 
+        material definition, section creation, section assignment.
+
+        Parameters
+        ----------
+        model_name : str
+        material_properties : Dict
+        scale: float
+      
+        Returns
+        -------
+        None
+        '''
+        section_name = material_name = material_properties['name']
+        AbaqusUtilities._material_definition(model_name, material_properties, scale)
+        AbaqusUtilities._create_section(model_name, section_name, material_name)
+        AbaqusUtilities._assign_section(model_name, section_name)
+        return
 
     @staticmethod
     def _material_definition(model_name: str, material_properties: Dict[str, Any], scale: float) :
         """
-        Assume that the Mdb model has been defined,
-        and only ISOTROPIC case is under consideration.
+        Abaqus script to perform material definition (Elastic, possion ratio, 
+        Expansion and Thermal Conductivity).
+        Assume that the Mdb model has been defined,and only ISOTROPIC case is under consideration.
 
-        ElasticThermalHomogenization
+        Parameters
+        ----------
+        model_name : str
+        material_properties : Dict
+        scale: float
 
-        Define the material properties and create material section
+        Returns
+        -------
+        None
         """
         material_name = material_properties['name']
         mdb.models[model_name].Material(name=material_name)
@@ -76,30 +108,65 @@ class AbaqusUtilities:
     @staticmethod
     def _create_section(model_name: str, section_name: str, material_name: str):
         '''
-        Genaral method.
+        Abaqus script to create material section.
+
+        Parameters
+        ----------
+        model_name : str
+        section_name : str
+            The name of the section to be created.
+        material_name: str
+            The name of the created material.
+      
+        Returns
+        -------
+        None
         '''
         mdb.models[model_name].HomogeneousSolidSection(
             name=section_name,
             material=material_name,
             thickness=None)
+        return 
 
     @staticmethod
     def _assign_section(model_name: str, section_name:str):
+        '''
+        Abaqus script to assign section to the model.
+
+        Parameters
+        ----------
+        model_name : str
+        section_name : str
+            The name of the section to be assigned.
+      
+        Returns
+        -------
+        None
+        '''
         part_name = AbaqusUtilities._get_part_name(model_name)
         p = mdb.models[model_name].parts[part_name]
         elements = p.elements[:]
         region = p.Set(elements=elements, name='ElementSet-1')
         p.SectionAssignment(region=region, sectionName=section_name)
-
-    @staticmethod
-    def assign_material(model_name: str, material_properties: Dict[str, Any], scale: float):
-        section_name = material_name = material_properties['name']
-        AbaqusUtilities._material_definition(model_name, material_properties, scale)
-        AbaqusUtilities._create_section(model_name, section_name, material_name)
-        AbaqusUtilities._assign_section(model_name, section_name)
+        return 
 
     @staticmethod
     def reference_points(model_name: str):
+        '''
+        Abaqus script to create reference points.
+        Contains 9 reference points.
+            - In thermoelastic homogenization, elastic analysis requires the first six points, 
+            thermal expansion analysis uses the last three points.
+            - In heat conduction homogenization, only the last three points are used.
+
+        Parameters
+        ----------
+        model_name : str
+      
+        Returns
+        -------
+        None
+        '''
         # This function handles the creation of six reference points to act as dumShear_zx nodes 
         # for the equations set-up. Then it creates the equations.
         # With all the set defined, only the offset dimensions are needed.
@@ -196,20 +263,56 @@ class AbaqusUtilities:
         mdb.models[model_name].rootAssembly.Set(
             referencePoints=refPoint,
             name='CONSTRAINTS DRIVER TZ')
-    
-    @classmethod
-    def setup_nodes(cls, model_name: str, mesh_sens: float, dims: list):
+
+    @staticmethod
+    def setup_nodes(model_name: str, mesh_sens: float, dims: list):
+        '''
+        Abaqus script to preprocessing nodes.
+       
+        Parameters
+        ----------
+        model_name : str
+        mesh_sens: float
+            Mesh sensitivity after scaling
+        dims: list[float]
+            The length of the side of the unit cell after scaling in the x, y, and z directions
+
+
+        Returns
+        -------
+        Dict[str:List[int]] 
+            Contains the nodes that matched with the following structure:
+            {
+                'vertex1': [label of vertex1],
+                ...,
+                'edge1': [label of sorted vertexes on the edge1],
+                ...,
+                'face1': [label of sorted vertexes on the face1],
+                ...,
+            }
+        
+        '''
         instance_name = AbaqusUtilities._get_instance_name(model_name) 
         nodeset = mdb.models[model_name].rootAssembly.instances[instance_name].nodes
-        nodes_coords = cls._classify_all_nodes(nodeset, mesh_sens, dims)
-        nodes_matched = cls._nodes_matching(nodes_coords, mesh_sens)
-        cls._create_nodeset(model_name, nodes_matched)
+        nodes_coords = AbaqusUtilities._classify_all_nodes(nodeset, mesh_sens, dims)
+        nodes_matched = AbaqusUtilities._nodes_matching(nodes_coords, mesh_sens)
+        AbaqusUtilities._create_nodeset(model_name, nodes_matched)
         return nodes_matched
 
-    @classmethod
-    def _create_nodeset(cls, model_name: str, nodes_matched):
+    @staticmethod
+    def _create_nodeset(model_name: str, nodes_matched):
         '''
-        create NodeSet in Abaqus.
+        Abaqus script to create NodeSet according the matched nodes d
+
+        Parameters
+        ----------
+        model_name : str
+        nodes_matched: Dict
+            Dictionary contains the nodes that matched
+
+        Returns
+        -------
+        None
         '''
         instance_name = AbaqusUtilities._get_instance_name(model_name) 
         assembly = mdb.models[model_name].rootAssembly
@@ -217,8 +320,32 @@ class AbaqusUtilities:
             for label in labels:
                 assembly.SetFromNodeLabels(name=f'Node_{name}_{label}', nodeLabels=((instance_name,[label]),))
       
-    @classmethod
-    def _nodes_matching(cls, nodes_coords, mesh_sens):
+    @staticmethod
+    def _nodes_matching(nodes_coords, mesh_sens):
+        '''
+        create NodeSet according the matched nodes.
+
+        Parameters
+        ----------
+        nodes_coords : Dict
+            The dictionary contains the classified nodes and their coordinates.
+        mesh_sens: float
+            Mesh sensitivity after scaling
+
+        Returns
+        -------
+        Dict[str:List[int]]
+            with the following structure:
+            {
+                'vertex1': [label of vertex1],
+                ...,
+                'edge1': [label of sorted vertexes on the edge1],
+                ...,
+                'face1': [label of sorted vertexes on the face1],
+                ...,
+            }
+        '''
+
         nodes_matched = {}
         def match_faces(face1, face2, mesh_sens, coord_indices):
             """
@@ -233,15 +360,15 @@ class AbaqusUtilities:
             # Build a face2 dictionary for efficient lookup
             face2_dict = {}
             for j in face2.keys():
-                key = tuple(cls._round_to_precision(face2[j][index], precision) for index in coord_indices)  # 根据指定的坐标轴建立键值对
+                key = tuple(AbaqusUtilities._round_to_precision(face2[j][index], precision) for index in coord_indices)  # 根据指定的坐标轴建立键值对
                 face2_dict[key] = j
 
             # Matching
             for i in face1_sorted:
-                key = tuple(cls._round_to_precision(face1[i][index], precision) for index in coord_indices)
+                key = tuple(AbaqusUtilities._round_to_precision(face1[i][index], precision) for index in coord_indices)
                 if key in face2_dict:
                     j = face2_dict[key]
-                    if all(cls._is_close(face1[i][index], face2[j][index], mesh_sens) for index in coord_indices):
+                    if all(AbaqusUtilities._is_close(face1[i][index], face2[j][index], mesh_sens) for index in coord_indices):
                         face2_sorted.append(j)
 
             return face1_sorted, face2_sorted
@@ -272,7 +399,7 @@ class AbaqusUtilities:
 
             for i in edge1_sorted:
                 for j in edge2.keys():
-                    if cls._is_close(edge1[i][coord_index], edge2[j][coord_index], mesh_sens):  # 只比较一个指定方向
+                    if AbaqusUtilities._is_close(edge1[i][coord_index], edge2[j][coord_index], mesh_sens):  # 只比较一个指定方向
                         edge2_sorted.append(j)
                         break
 
@@ -315,28 +442,43 @@ class AbaqusUtilities:
 
         return nodes_matched
 
-    @classmethod
-    def _classify_all_nodes(cls, nodeset, mesh_sens: float , dims: list):
+    @staticmethod
+    def _classify_all_nodes( nodeset, mesh_sens: float , dims: list):
         '''
         Classifies all of the mesh nodes into one of the following categories: 
-            - face node
-            - edge node
-            - vertex node
-            - other 
-
+            - face nodes
+            - edge nodes
+            - vertex nodes
+            - other (interior) nodes
 
         Parameters
         ----------
-        nodeset : The nodeset objcect (from Abaqus)
+        nodeset : The nodeset objcect (Abaqus built-in types)
         mesh_sens : float
-            Mesh sensitivity
-        dims: list
-      
+            Mesh sensitivity after scaling
+        dims: list[float]
+            The length of the side of the unit cell after scaling in the x, y, and z directions
 
         Returns
         -------
-        None
+        Dict[str:Dict[int:numpy.ndarray]] 
+            with the following structure:
+            {
+                'vertex1':{
+                    label of node on vertex1: coords of the node
+                },
+                ...,
+                'edge1':{
+                    label of node on edge1 : coords of the node
+                },
+                ...,
+                'face1':{
+                    label of node on face1 : coords of the node
+                },
+                ...
+            }
         '''
+
         xDim, yDim, zDim = (dim * 0.5 for dim in dims)
         boundaries = {
             'max_x': xDim,
@@ -346,18 +488,17 @@ class AbaqusUtilities:
             'min_y': -yDim,
             'min_z': -zDim,
         }
-
         nodes_coords = {}
 
         for node in nodeset:
-            cls._classify_node(node, mesh_sens, boundaries, nodes_coords)
+            AbaqusUtilities._classify_node(node, mesh_sens, boundaries, nodes_coords)
 
         return nodes_coords
     
-    @classmethod
-    def _classify_node(cls, node, mesh_sens, boundaries, nodes_coords):
+    @staticmethod
+    def _classify_node( node, mesh_sens, boundaries, nodes_coords):
         '''
-        Classifies a mesh node into one of the following categories: 
+        Classifies a single mesh node into one of the following categories: 
             - face node
             - edge node
             - vertex node
@@ -367,9 +508,10 @@ class AbaqusUtilities:
 
         Parameters
         ----------
-        node : The mesh node object (from Abaqus)
+        node : The mesh node object (Abaqus built-in types)
         boundaries : dict
-            A dictionary with the following structure:
+            A dictionary representing the value with the largest absolute value 
+            on the coordinate axis after scaling with the following structure:
             - "min_x" : float
             - "max_x" : float
             - "min_y" : float
@@ -377,23 +519,25 @@ class AbaqusUtilities:
             - "min_z" : float
             - "max_z" : float
         mesh_sens : float
-            Mesh sensitivity
-
+            Mesh sensitivity after scaling
+        nodes_coords: Dict
+            Receive node information after classification
         Returns
         -------
         None
-            The function performs classification but does not return any value.
+            The function performs classification and 
+            save the result in the input parameter nodes_coords.
 
         '''
         x, y, z = node.coordinates
         label = int(node.label)
 
-        close_to_min_x = cls._is_close(x, boundaries['min_x'], mesh_sens)
-        close_to_max_x = cls._is_close(x, boundaries['max_x'], mesh_sens)
-        close_to_min_y = cls._is_close(y, boundaries['min_y'], mesh_sens)
-        close_to_max_y = cls._is_close(y, boundaries['max_y'], mesh_sens)
-        close_to_min_z = cls._is_close(z, boundaries['min_z'], mesh_sens)
-        close_to_max_z = cls._is_close(z, boundaries['max_z'], mesh_sens)
+        close_to_min_x = AbaqusUtilities._is_close(x, boundaries['min_x'], mesh_sens)
+        close_to_max_x = AbaqusUtilities._is_close(x, boundaries['max_x'], mesh_sens)
+        close_to_min_y = AbaqusUtilities._is_close(y, boundaries['min_y'], mesh_sens)
+        close_to_max_y = AbaqusUtilities._is_close(y, boundaries['max_y'], mesh_sens)
+        close_to_min_z = AbaqusUtilities._is_close(z, boundaries['min_z'], mesh_sens)
+        close_to_max_z = AbaqusUtilities._is_close(z, boundaries['max_z'], mesh_sens)
 
         # Classify vertices
         vertex_conditions = [
@@ -452,11 +596,11 @@ class AbaqusUtilities:
                     nodes_coords[f'{key}'] = {}
                 nodes_coords[f'{key}'][label] = np.array([x, y, z])
 
-    @classmethod
-    def _is_close(cls, value1, value2, tolerance):
+    @staticmethod
+    def _is_close(value1, value2, tolerance):
         '''
         Checks if two values are approximately equal within a specified tolerance.
-
+        Auxiliary member method for matching nodes.
         Parameters
         ----------
         value1 : float
@@ -474,11 +618,11 @@ class AbaqusUtilities:
         '''
         return abs(value1 - value2) <= tolerance
 
-    @classmethod
-    def _round_to_precision(cls, value, precision):
+    @staticmethod
+    def _round_to_precision(value, precision):
         '''
         Rounds a value to the specified number of decimal places.
-
+        Auxiliary member method for matching nodes.
         Parameters
         ----------
         value : float
@@ -495,108 +639,68 @@ class AbaqusUtilities:
 
     @staticmethod
     def _get_instance_name(model_name: str):
+        '''
+        A private method to unify the naming of Instances.
+
+        Parameters
+        ----------
+        model_name : str
+
+        Returns
+        -------
+        str
+            The unified Instance name according to the model_name.
+        '''
         return model_name + 'Instance'
     
     @staticmethod
     def _get_part_name(model_name: str):
+        '''
+        A private method to unify the naming of Parts.
+
+        Parameters
+        ----------
+        model_name : str
+
+        Returns
+        -------
+        str
+            The unified Part name according to the model_name.
+        '''
         return model_name + 'Part'
 
     @staticmethod
     def _create_viewport(model_name):
+        '''
+        A private method to create a viewport of the model.
+
+        Parameters
+        ----------
+        model_name : str
+
+        Returns
+        -------
+        None
+        '''
         unitCellViewport = session.Viewport(name=model_name)
         unitCellViewport.makeCurrent()
         unitCellViewport.maximize()
 
-    @classmethod
-    def viewport_display_et(cls, model_name: str, odb_file, load_vec=None):
-        '''
-        odb_file:
-        load_vec: loading vector
-
-        the order in frame is "x -> y -> xy -> yz -> zx" (String)
-        ''' 
-        def create_viewport_et(name, step, frame_index, variable_label, comp1,comp2, 
-        x_angle=270.0, y_angle=0.0, z_angle=270.0):
-            session.Viewport(
-                name=name,
-                titleStyle=CUSTOM,
-                customTitleString=name)
-            session.viewports[name].setValues(displayedObject=odb_file)
-            session.viewports[name].odbDisplay.setFrame(
-                step=step,
-                frame=frame_index)
-            
-            session.viewports[name].odbDisplay.display.setValues(
-                plotState=CONTOURS_ON_DEF)
-            session.viewports[name].odbDisplay.setPrimaryVariable(
-                variableLabel=variable_label,
-                outputPosition=INTEGRATION_POINT,
-                refinement=(comp1, comp2))
-            session.viewports[name].view.rotate(
-                mode=MODEL,
-                xAngle=x_angle,
-                yAngle=y_angle,
-                zAngle=z_angle,
-                drawImmediately=True)
-
-        if load_vec is None:
-            return
-        # name, step, variableLabel, refinement(comp1, comp2)
-        ViewportData = namedtuple('ViewportData', ['name', 'step', 'variable_label', 'comp1', 'comp2'])
-        viewport_data = [
-            ViewportData('Pure X load', 0, 'S', COMPONENT, 'S11'),
-            ViewportData('Pure Y load', 0, 'S', COMPONENT, 'S22'),
-            ViewportData('Pure Z load', 0, 'S', COMPONENT, 'S33'),
-            ViewportData('Shear YZ load', 0, 'S', COMPONENT, 'S23'),
-            ViewportData('Shear ZX load', 0, 'S', COMPONENT, 'S13'),
-            ViewportData('Shear XY load', 0, 'S', COMPONENT, 'S12'),
-            ViewportData('Temperature load', 1, 'S', INVARIANT, 'Mises'),
-        ]
-
-        
-        frame_index = 1
-        load_case_order = [index for index, _ in sorted(enumerate(viewport_data[:-1]), key=lambda x: x[1].name)]
-        for case_index in load_case_order:
-            if load_vec[case_index] != 0.0:
-                case_data = viewport_data[case_index]
-                create_viewport_et(case_data.name, case_data.step, frame_index, case_data.variable_label, case_data.comp1, case_data.comp2)
-                frame_index += 1
-        # temperature
-        if load_vec[-1] != 0.0:
-            tem_data = viewport_data[-1]
-            frame_index = 1
-            create_viewport_et(tem_data.name, tem_data.step, frame_index, tem_data.variable_label, tem_data.comp1, tem_data.comp2)
-       
-        load_case_order = [index for index, _ in sorted(enumerate(viewport_data), key=lambda x: x[1].name)]
-        # Position each viewport
-        viewPortIndexOffset = 0
-        for case_index in load_case_order:
-            if load_vec[case_index] != 0.0:
-                session.viewports[viewport_data[case_index].name].setValues(
-                    origin=(15.0 + 5.0 * viewPortIndexOffset, 10.0  - 10.0 * viewPortIndexOffset),
-                    width=155.0,
-                    height=110.0)
-                viewPortIndexOffset += 1
-
-
-
-    @classmethod
-    def create_report_json_et(cls, model_name: str, unit_cell: UnitCell, effective_props, scale: float):
-        file_name = model_name  + '_et_' + '.rpt'
-        converted_props = AbaqusUtilities._convert_float32_to_float64(effective_props)
-        data = {
-            'scale': scale,
-            'mesh_params': unit_cell.get_mesh_params(),
-            'geo_params_scaled': unit_cell.get_geo_params(),
-            'material_properties': unit_cell.get_material_properties(),
-            'effective_props': converted_props
-        }
-
-        with open(file_name, 'w', encoding='utf-8') as file:
-            json.dump(data, file, indent=4, ensure_ascii=False)
-
     @staticmethod
     def _convert_float32_to_float64(data):
+        """
+        Recursively convert float32 to float64 in various data types.
+
+        Parameters
+        ----------
+        data : numpy.ndarray, list, dict, or numpy.float32
+            Input data containing float32 values to convert.
+
+        Returns
+        -------
+        Converted data with float64 types where applicable.
+        
+        """
         if isinstance(data, np.ndarray): 
             if data.dtype == np.float32: 
                 return data.astype(np.float64)  
@@ -609,11 +713,20 @@ class AbaqusUtilities:
             return np.float64(data) 
         return data
 
-
-    @classmethod
-    def _set_meshType(cls, model_name: str, eleType='C3D4'):
+    @staticmethod
+    def _set_meshType(model_name: str, eleType='C3D4'):
         '''
-        Reset the grid cell type.
+        Reset all element of "model_name" to type "eleType".
+        Currently only tetrahedral elements are supported.
+        Parameters
+        ----------
+        model_name : str
+        eleType: str
+            The new type of elements.
+
+        Returns
+        -------
+        None
         '''
         eleType = AbaqusUtilities._get_eleType(eleType)
         elemType1 = mesh.ElemType(elemCode=eleType, elemLibrary=STANDARD)
@@ -621,17 +734,21 @@ class AbaqusUtilities:
         model = mdb.models[model_name]
         region = model.parts[part_name].elements[:]
         model.parts[part_name].setElementType(regions=(region,), elemTypes=(elemType1,))
-        return
-    
-
-
 
     @staticmethod
     def _get_eleType(eleType: str):
-        '''
-        Convert the element type of the setting parameter
-        into the corresponding element type constant in abaqus
-        '''
+        """
+        Map the input element type string to the corresponding Abaqus element type constant.
+
+        Parameters
+        ----------
+        eleType : str
+            The element type as a string (e.g., 'C3D4', 'C3D10').
+
+        Returns
+        -------
+        The corresponding Abaqus element type constant, defaulting to C3D4 if not found.
+        """
         
         element_type_conversion ={
             'C3D4': C3D4,
@@ -642,9 +759,83 @@ class AbaqusUtilities:
         return element_type_conversion.get(eleType, C3D4)
         
 
-class ElasticThermalAbaqusUtilities(AbaqusUtilities):
-    @classmethod
-    def set_PBC_et(cls, model_name: str, nodes_matched, dims: list):
+    @staticmethod
+    def reset_abaqus():
+        '''
+        Reset the whole Abaqus data
+        Delete and close the ode file.
+        Open a new model database.
+        '''
+
+    def reset_model():
+        '''
+        reset the setting of abaqus.
+        Delete and close the ode file.
+        Clear the all of the Loads&BC, Steps, Jobs etc.
+        '''
+
+
+class ThermalElasticAbaqusUtilities(AbaqusUtilities):
+    """
+    This class contains a set of utilities for performing thermal-elastic 
+    analysis in Abaqus. It provides methods to set boundary conditions, 
+    create steps, apply thermal-elastic loads, and handle job submissions 
+    specific to thermal-elastic problems.
+
+    The class encapsulates various Abaqus scripting functionalities and is 
+    specifically designed to work with thermal-elastic simulations. It supports 
+    operations such as load application, result visualization, and effective 
+    property calculations. These methods are intended for use in scripts that 
+    automate Abaqus workflows for multi-scale analysis.
+
+    Methods
+    -------
+    - set_PBC_te(model_name, nodes_matched, dims):
+        Set periodic boundary conditions for thermal-elastic simulations.
+
+    - create_steps_te(model_name):
+        Create analysis steps for the thermal-elastic problem.
+
+    - apply_loads_te(model_name, load_vec=(1.0,)*7):
+        Apply thermal-elastic loads to the model.
+
+    - submit_job_te(model_name, load_vec=(1.0,)*7, display_in_viewport=True, job_params=None):
+        Submit the job for Abaqus thermal-elastic analysis.
+
+    - viewport_display_te(odb_file, load_vec=None):
+        Display the simulation results in Abaqus viewport.
+
+    - create_report_json_te(model_name, unit_cell, effective_props, scale):
+        Generate a report in JSON format with effective properties.
+
+    - get_odb_te(model_name, load_vec=(1.0,)*7, display_in_viewport=True):
+        Retrieve and handle the output database (ODB) from Abaqus.
+
+    - calc_effective_props_te(vol_unitcell, load_vec, odb_file, scale):
+        Calculate the effective properties based on the results.
+
+    - save_effective_props_te(model_name, effective_props):
+        Save the effective properties to an external file.
+    """
+
+    @staticmethod
+    def set_PBC_te(model_name: str, nodes_matched, dims: list):
+        """
+        Set periodic boundary conditions (PBC) for the thermal-elastic unit cell.
+        Include Vertex, Edge and Face.
+        The governing equations are in the lower triangular matrix form.
+
+        Parameters
+        ----------
+        model_name : str
+            The name of the Abaqus model for which the boundary conditions are being set.
+
+        nodes_matched : dict
+
+        dims : list
+            A list containing the dimensions of the unit cell in the x, y, and z directions 
+            (e.g., [xDim, yDim, zDim]).
+        """
         # The length of the whole unit cell model
         xDim, yDim, zDim = dims
  
@@ -1146,8 +1337,26 @@ class ElasticThermalAbaqusUtilities(AbaqusUtilities):
             localCsys=None)	
         print ('Boundary conditions have been defined')
 
-    @classmethod
-    def create_steps_et(cls, model_name):
+    @staticmethod
+    def create_steps_te(model_name):
+        """
+        Abaqus script to create thermal-elastic analysis steps and field output requests.
+
+        This method sets up two steps: one for computing effective elastic properties 
+        and another for computing thermal expansion coefficients. It also configures 
+        field output requests for stress, displacement, and other relevant variables.
+
+        Parameters
+        ----------
+        model_name : str
+            The name of the Abaqus model for which the steps are created.
+
+        Notes
+        -----
+        - The method removes incompatible history output requests.
+        - Additional field output requests are defined for each constrained degree of freedom.
+        
+        """
         # This function allows for more complex step set-up.
         mdb.models[model_name].StaticLinearPerturbationStep(
             name='Isothermal linear perturbation step',
@@ -1239,8 +1448,22 @@ class ElasticThermalAbaqusUtilities(AbaqusUtilities):
         # Delete the default Field Output Request.
         del mdb.models[model_name].fieldOutputRequests['F-Output-1']
 
-    @classmethod
-    def apply_loads_et(cls, model_name, load_vec=(1.0,)*7):
+    @staticmethod
+    def apply_loads_te(model_name, load_vec=(1.0,)*7):
+        """
+        Apply thermal-elastic loads to the model.
+
+        This method applies temperature and concentrated force loads for the thermal-elastic analysis.
+        It assigns temperature distributions and concentrated forces in different directions, 
+        including Fx, Fy, Fz, and shear components.
+
+        Parameters
+        ----------
+        model_name : str
+            Name of the Abaqus model.
+        load_vec : tuple of float, optional
+            A vector specifying the load values for forces and shear in each direction (default is (1.0,)*7).
+        """
         instance_name = AbaqusUtilities._get_instance_name(model_name) 
         assembly = mdb.models[model_name].rootAssembly
         nodes_label = [int(i.label) for i in assembly.allInstances[instance_name].nodes]
@@ -1374,8 +1597,30 @@ class ElasticThermalAbaqusUtilities(AbaqusUtilities):
                 loads=(('Load on CONSTRAINTS DRIVER SHEAR_XY',1),),
                 includeActiveBaseStateBC=ON)
 
-    @classmethod
-    def submit_job_et(cls, model_name, load_vec=(1.0,)*7, display_in_viewport=True, job_params=None):
+    @staticmethod
+    def submit_job_te(model_name, load_vec=(1.0,)*7, display_in_viewport=True, job_params=None):
+        """
+        Submit the thermal-elastic job for analysis.
+
+        Submits the job to Abaqus and waits for its completion. It can optionally display the results 
+        in the Abaqus viewport upon completion.
+
+        Parameters
+        ----------
+        model_name : str
+            The name of the model to submit for analysis.
+        load_vec : tuple of float, optional
+            The vector containing the load values to apply (default is (1.0,)*7).
+        display_in_viewport : bool, optional
+            Whether to display the results in the Abaqus viewport (default is True).
+        job_params : dict, optional
+            Additional parameters for the job submission (default is None).
+
+        Returns
+        -------
+        resultODB : OdbObject
+            The output database (ODB) file of the analysis.
+        """
         job_name = model_name.replace(' ','_')
         mdb.Job(name=job_name,
 					model=model_name,
@@ -1398,26 +1643,200 @@ class ElasticThermalAbaqusUtilities(AbaqusUtilities):
         fileName = job_name + '.odb'
         if display_in_viewport:
             resultODB = visualization.openOdb(path=fileName, readOnly=True)
-            cls.viewport_display_et(model_name, resultODB, load_vec)
+            ThermalElasticAbaqusUtilities.viewport_display_te(resultODB, load_vec)
         else:
             resultODB = odbAccess.openOdb(path=fileName)
         return resultODB
-   
+    
+    @staticmethod
+    def set_meshType_te(model_name: str, eleType='DC3D4'):
+        """
+        Set the element type for mesh generation in the heat conduction model.
+        Currently only tetrahedral elements are supported.
+        Parameters
+        ----------
+        model_name : str
+            Name of the Abaqus model.
+        eleType : str, optional
+            The element type used for meshing (default is 'C3D4').
+        """
 
-    # need to be delete
-    @classmethod
-    def get_odb_et(cls,model_name, load_vec=(1.0,)*7, display_in_viewport=True):
+        element_type_conversion ={
+            'DC3D4': 'C3D4',
+            'DC3D10': 'C3D10',
+            'C3D4': 'C3D4',
+            'C3D10': 'C3D10',
+            }
+        AbaqusUtilities._set_meshType(model_name, element_type_conversion[eleType])
+
+    @staticmethod
+    def viewport_display_te(odb_file, load_vec=None):
+        """
+        Display the results of the thermal-elastic analysis in the Abaqus viewport.
+
+        This method sets up the Abaqus viewport to visualize the results, including displacement 
+        and stress variables based on the load vector applied.
+
+        Parameters
+        ----------
+        model_name : str
+            The name of the model for which results are displayed.
+        odb_file : OdbObject
+            The output database (ODB) file to visualize.
+        load_vec : list of float, optional
+            The load vector applied during the analysis (default is None).
+        """
+   
+        def create_viewport_te(name, step, frame_index, variable_label, comp1,comp2, 
+        x_angle=270.0, y_angle=0.0, z_angle=270.0):
+            session.Viewport(
+                name=name,
+                titleStyle=CUSTOM,
+                customTitleString=name)
+            session.viewports[name].setValues(displayedObject=odb_file)
+            session.viewports[name].odbDisplay.setFrame(
+                step=step,
+                frame=frame_index)
+            
+            session.viewports[name].odbDisplay.display.setValues(
+                plotState=CONTOURS_ON_DEF)
+            session.viewports[name].odbDisplay.setPrimaryVariable(
+                variableLabel=variable_label,
+                outputPosition=INTEGRATION_POINT,
+                refinement=(comp1, comp2))
+            session.viewports[name].view.rotate(
+                mode=MODEL,
+                xAngle=x_angle,
+                yAngle=y_angle,
+                zAngle=z_angle,
+                drawImmediately=True)
+
+        if load_vec is None:
+            return
+        # name, step, variableLabel, refinement(comp1, comp2)
+        ViewportData = namedtuple('ViewportData', ['name', 'step', 'variable_label', 'comp1', 'comp2'])
+        viewport_data = [
+            ViewportData('Pure X load', 0, 'S', COMPONENT, 'S11'),
+            ViewportData('Pure Y load', 0, 'S', COMPONENT, 'S22'),
+            ViewportData('Pure Z load', 0, 'S', COMPONENT, 'S33'),
+            ViewportData('Shear YZ load', 0, 'S', COMPONENT, 'S23'),
+            ViewportData('Shear ZX load', 0, 'S', COMPONENT, 'S13'),
+            ViewportData('Shear XY load', 0, 'S', COMPONENT, 'S12'),
+            ViewportData('Temperature load', 1, 'S', INVARIANT, 'Mises'),
+        ]
+
+        frame_index = 1
+        load_case_order = [index for index, _ in sorted(enumerate(viewport_data[:-1]), key=lambda x: x[1].name)]
+        for case_index in load_case_order:
+            if load_vec[case_index] != 0.0:
+                case_data = viewport_data[case_index]
+                create_viewport_te(case_data.name, case_data.step, frame_index, case_data.variable_label, case_data.comp1, case_data.comp2)
+                frame_index += 1
+        # temperature
+        if load_vec[-1] != 0.0:
+            tem_data = viewport_data[-1]
+            frame_index = 1
+            create_viewport_te(tem_data.name, tem_data.step, frame_index, tem_data.variable_label, tem_data.comp1, tem_data.comp2)
+       
+        load_case_order = [index for index, _ in sorted(enumerate(viewport_data), key=lambda x: x[1].name)]
+        # Position each viewport
+        viewPortIndexOffset = 0
+        for case_index in load_case_order:
+            if load_vec[case_index] != 0.0:
+                session.viewports[viewport_data[case_index].name].setValues(
+                    origin=(15.0 + 5.0 * viewPortIndexOffset, 10.0  - 10.0 * viewPortIndexOffset),
+                    width=155.0,
+                    height=110.0)
+                viewPortIndexOffset += 1
+
+    @staticmethod
+    def create_report_json_te(model_name: str, unit_cell: UnitCell, effective_props, scale: float):
+        """
+        Create a JSON report summarizing the thermal-elastic properties.
+
+        This method generates a JSON file containing the mesh parameters, scaled geometric 
+        parameters, material properties, and effective properties.
+
+        Parameters
+        ----------
+        model_name : str
+            The name of the model.
+        unit_cell : UnitCell
+            The unit cell object containing mesh and geometric properties.
+        effective_props : dict
+            A dictionary of the effective properties computed from the analysis.
+        scale : float
+            The scaling factor applied to the geometric parameters.
+        """
+        file_name = model_name  + '_te_' + '.rpt'
+        converted_props = AbaqusUtilities._convert_float32_to_float64(effective_props)
+        data = {
+            'scale': scale,
+            'mesh_params': unit_cell.get_mesh_params(),
+            'geo_params_scaled': unit_cell.get_geo_params(),
+            'material_properties': unit_cell.get_material_properties(),
+            'effective_props': converted_props
+        }
+
+        with open(file_name, 'w', encoding='utf-8') as file:
+            json.dump(data, file, indent=4, ensure_ascii=False)
+
+    @staticmethod
+    def get_odb_te(model_name: str, load_vec=(1.0,)*7, display_in_viewport=True):
+        """
+        Retrieve and optionally display the ODB file for the thermal-elastic analysis.
+
+        This method retrieves the output database (ODB) file from the analysis, and optionally 
+        displays the results in the Abaqus viewport.
+
+        Parameters
+        ----------
+        model_name : str
+            The name of the model.
+        load_vec : tuple of float, optional
+            The load vector applied in the analysis (default is (1.0,)*7).
+        display_in_viewport : bool, optional
+            Whether to display the results in the viewport (default is True).
+
+        Returns
+        -------
+        resultODB : OdbObject
+            The output database file.
+        """
         job_name = model_name.replace(' ','_')
         fileName = job_name + '.odb'
         if display_in_viewport:
             resultODB = visualization.openOdb(path=fileName, readOnly=True)
-            cls.viewport_display_et(model_name, resultODB, load_vec)
+            ThermalElasticAbaqusUtilities.viewport_display_te(resultODB, load_vec)
         else:
             resultODB = odbAccess.openOdb(path=fileName)
         return resultODB
 
-    @classmethod
-    def calc_effective_props_et(cls, vol_unitcell: float, load_vec: list[float], odb_file, scale: float):
+    @staticmethod
+    def calc_effective_props_te(vol_unitcell: float, load_vec: list[float], odb_file, scale: float):
+        """
+        Calculate effective properties based on the thermal-elastic analysis results.
+
+        This method calculates the effective elastic moduli, Poisson ratios, and thermal 
+        expansion coefficients from the ODB results.
+
+        Parameters
+        ----------
+        vol_unitcell : float
+            The volume of the unit cell.
+        load_vec : list of float
+            The load vector applied during the analysis.
+        odb_file : OdbObject
+            The ODB file containing the analysis results.
+        scale : float
+            The scaling factor applied to the geometry.
+
+        Returns
+        -------
+        effective_props : dict
+            A dictionary containing the effective elastic moduli, Poisson ratios, and 
+            thermal expansion coefficients.
+        """
         def get_displacement(frame, indices):
             return [frame.fieldOutputs['U'].values[i].data[0] for i in indices]
 
@@ -1429,7 +1848,6 @@ class ElasticThermalAbaqusUtilities(AbaqusUtilities):
 
         # Collect steps
         isothermalStep, thermoMechanicalStep = odb_file.steps.values()[0], odb_file.steps.values()[1]
-
         # Load cases are stored in frames
         frames_iso = [odb_file.steps[isothermalStep.name].frames[i] for i in range(1, 7)]
         frame_thermo = odb_file.steps[thermoMechanicalStep.name].frames[1]
@@ -1460,7 +1878,6 @@ class ElasticThermalAbaqusUtilities(AbaqusUtilities):
         
         # [G0yz, G0xz, G0xy]
         G0 = [compute_modulus(load_vec[3 + i], vol_unitcell, shear_gama0[i], scale) for i in range(3)]
-
         alpha = [Th_eps0[i] / load_vec[6] for i in range(3)]
 
         # Scale displacements
@@ -1485,7 +1902,19 @@ class ElasticThermalAbaqusUtilities(AbaqusUtilities):
         return effective_props
       
     @staticmethod
-    def save_effective_props_et(model_name: str, effective_props):
+    def save_effective_props_te(model_name: str, effective_props):
+        """
+        Save the effective thermal-elastic properties to a CSV file.
+
+        This method writes the computed effective properties to a CSV file for later reference.
+
+        Parameters
+        ----------
+        model_name : str
+            The name of the model.
+        effective_props : dict
+            A dictionary of the effective thermal-elastic properties to be saved.
+        """
         E1, E2, E3 = effective_props['E']
         v12, v13, v23 = [effective_props['v'][i] for i in [0,1,3]]
         G23, G13, G12 = effective_props['G']
@@ -1498,18 +1927,73 @@ class ElasticThermalAbaqusUtilities(AbaqusUtilities):
             'alpha1': alpha1, 'alpha2': alpha2, 'alpha3': alpha3
         }
 
-        with open(f'{model_name}_effective_props.csv', mode='w', newline='') as file:
+        with open(f'{model_name}_effective_props_te.csv', mode='w', newline='') as file:
             writer = csv.writer(file)
             writer.writerow(props_data.keys()) 
             writer.writerow(props_data.values())
 
     
 class HeatConductionAbaqusUtilities(AbaqusUtilities):
-    @classmethod
-    def set_PBC_hc(cls, model_name: str, nodes_matched, dims: list):
-        '''
-        # The 'Temp' equation (Abaqus coordinate 11)
-        '''
+    """
+    Utilities for performing heat conduction analysis in Abaqus.
+
+    This class provides a set of methods for setting up and executing 
+    heat conduction simulations in Abaqus. It handles boundary conditions, 
+    mesh configurations, load applications, and job submissions, as well as 
+    the calculation and storage of effective thermal properties.
+
+    Methods
+    -------
+    - set_PBC_hc(model_name, nodes_matched, dims):
+        Set periodic boundary conditions for heat conduction.
+
+    - create_steps_hc(model_name):
+        Create analysis steps for heat conduction problems.
+
+    - apply_loads_hc(model_name, load_vec=(1.0,)*3):
+        Apply heat conduction loads to the model.
+
+    - submit_job_hc(model_name, load_vec=(1.0,)*7, display_in_viewport=True, job_params=None):
+        Submit the job for Abaqus heat conduction analysis.
+
+    - get_odb_hc(model_name, load_vec=(1.0,)*7, display_in_viewport=True):
+        Retrieve and optionally display the ODB file for the heat conduction analysis.
+
+    - set_meshType_hc(model_name, eleType='C3D4'):
+        Set the element type for mesh generation in the heat conduction model.
+
+    - viewport_display_hc(odb_file, load_vec=None):
+        Display the results of the heat conduction analysis in the Abaqus viewport.
+
+    - calc_effective_props_hc(vol_unitcell, load_vec, odb_file, scale):
+        Calculate effective thermal properties based on the heat conduction analysis results.
+
+    - save_effective_props_hc(model_name, effective_props):
+        Save the effective thermal properties to a CSV file.
+
+    - create_report_json_hc(model_name, unit_cell, effective_props, scale):
+        Generate a JSON report summarizing the effective thermal properties.
+    """
+
+
+    @staticmethod
+    def set_PBC_hc(model_name: str, nodes_matched, dims: list):
+        """
+        Set periodic boundary conditions (PBC) for the heat conduction unit cell.
+        Include Vertex, Edge and Face.
+        The governing equations are in the lower triangular matrix form.
+        The 'Temp' equation (Abaqus coordinate 11).
+
+        Parameters
+        ----------
+        model_name : str
+            Name of the Abaqus model.
+        nodes_matched : dict
+            A dictionary of nodes matched between opposite faces.
+        dims : list
+            List of unit cell dimensions [xDim, yDim, zDim].
+        """
+    
         # The length of the whole unit cell model
         xDim, yDim, zDim = dims
 
@@ -1724,8 +2208,16 @@ class HeatConductionAbaqusUtilities(AbaqusUtilities):
             
         print ('Heat Conduction Boundary conditions have been defined') 
     
-    @classmethod
-    def create_steps_hc(cls, model_name):
+    @staticmethod
+    def create_steps_hc(model_name: str):
+        """
+        Create analysis steps for the heat conduction problem.
+
+        Parameters
+        ----------
+        model_name : str
+            Name of the Abaqus model.
+        """
         # This function allows for more complex step set-up.
         mdb.models[model_name].HeatTransferStep(name='Heat Transfer Step', 
         previous='Initial', response=STEADY_STATE, amplitude=RAMP)
@@ -1752,8 +2244,19 @@ class HeatConductionAbaqusUtilities(AbaqusUtilities):
             name='Heat flux vector', variables=( 'HFL',))
         del mdb.models[model_name].fieldOutputRequests['F-Output-1']
 
-    @classmethod
-    def apply_loads_hc(cls, model_name, load_vec=(1.0,)*3):
+    @staticmethod
+    def apply_loads_hc(model_name: str, load_vec=(1.0,)*3):
+        """
+        Apply heat conduction loads to the model.
+
+        Parameters
+        ----------
+        model_name : str
+            Name of the Abaqus model.
+        load_vec : tuple of float, optional
+            A vector specifying the thermal loads (default is (1.0,)*3).
+        """
+
         Tx, Ty, Tz = load_vec
         # Setting up the concentrated Heat Flux.
         if (Tx!=0.0):
@@ -1776,8 +2279,28 @@ class HeatConductionAbaqusUtilities(AbaqusUtilities):
                 name='Heat Flux on CONSTRAINTS DRIVER TZ', 
                 region=mdb.models[model_name].rootAssembly.sets['CONSTRAINTS DRIVER TZ'])
   
-    @classmethod
-    def submit_job_hc(cls, model_name, load_vec=(1.0,)*7, display_in_viewport=True, job_params=None):
+    @staticmethod
+    def submit_job_hc(model_name: str, load_vec=(1.0,)*7, display_in_viewport=True, job_params=None):
+        """
+        Submit the job for heat conduction analysis.
+
+        Parameters
+        ----------
+        model_name : str
+            Name of the Abaqus model.
+        load_vec : tuple of float, optional
+            The vector specifying the load values (default is (1.0,)*7).
+        display_in_viewport : bool, optional
+            Whether to display the results in the viewport (default is True).
+        job_params : dict, optional
+            Additional parameters for job submission (default is None).
+
+        Returns
+        -------
+        resultODB : OdbObject
+            The output database (ODB) file of the analysis.
+        """
+
         job_name = model_name.replace(' ','_') +'_hc'
         mdb.Job(name=job_name,
 					model=model_name,
@@ -1800,46 +2323,76 @@ class HeatConductionAbaqusUtilities(AbaqusUtilities):
         fileName = job_name + '.odb'
         if display_in_viewport:
             resultODB = visualization.openOdb(path=fileName, readOnly=True)
-            cls.viewport_display_hc(model_name, resultODB, load_vec)
+            HeatConductionAbaqusUtilities.viewport_display_hc(resultODB, load_vec)
         else:
             resultODB = odbAccess.openOdb(path=fileName)
         return resultODB
     
-    # need to be delete
-    @classmethod
-    def get_odb_hc(cls,model_name, load_vec=(1.0,)*7, display_in_viewport=True):
+    @staticmethod
+    def get_odb_hc(model_name: str, load_vec=(1.0,)*7, display_in_viewport=True):
+        """
+    Retrieve and optionally display the ODB file for the heat conduction analysis.
+
+        Parameters
+        ----------
+        model_name : str
+            Name of the Abaqus model.
+        load_vec : tuple of float, optional
+            Load vector applied in the analysis (default is (1.0,)*7).
+        display_in_viewport : bool, optional
+            Whether to display the results in the viewport (default is True).
+
+        Returns
+        -------
+        resultODB : OdbObject
+            The output database file.
+        """
+        
         job_name = model_name.replace(' ','_') +'_hc'
         fileName = job_name + '.odb'
         if display_in_viewport:
             resultODB = visualization.openOdb(path=fileName, readOnly=True)
-            cls.viewport_display_hc(model_name, resultODB, load_vec)
+            HeatConductionAbaqusUtilities.viewport_display_hc(resultODB, load_vec)
         else:
             resultODB = odbAccess.openOdb(path=fileName)
         return resultODB
   
+    @staticmethod
+    def set_meshType_hc(model_name: str, eleType='C3D4'):
+        """
+        Set the element type for mesh generation in the heat conduction model.
+        Currently only tetrahedral elements are supported.
+        Parameters
+        ----------
+        model_name : str
+            Name of the Abaqus model.
+        eleType : str, optional
+            The element type used for meshing (default is 'C3D4').
+        """
 
-
-    @classmethod
-    def set_meshType_hc(cls, model_name: str, eleType='C3D4'):
-        '''
-        Reset the mesh element type to thermal conductivity mesh elements.
-        ''' 
         element_type_conversion ={
             'C3D4': 'DC3D4',
             'C3D10': 'DC3D10',
-            'C3D20': 'DC3D20'
+            'DC3D4': 'DC3D4',
+            'DC3D10': 'DC3D10',
             }
-        cls._set_meshType(model_name, element_type_conversion[eleType])
+        AbaqusUtilities._set_meshType(model_name, element_type_conversion[eleType])
         
-   
+    @staticmethod
+    def viewport_display_hc(odb_file, load_vec=None):
+        """
+        Display the results of the heat conduction analysis in the Abaqus viewport.
 
-    @classmethod
-    def viewport_display_hc(cls, model_name: str, odb_file, load_vec=None):
-        '''
-        odb_file:
-        load_vec: loading vector
-      
-        ''' 
+        Parameters
+        ----------
+        model_name : str
+            Name of the Abaqus model.
+        odb_file : OdbObject
+            The output database file.
+        load_vec : list of float, optional
+            Load vector applied in the analysis (default is None).
+        """
+        
         def create_viewport_hc(name, variable_label, comp1,comp2, 
         x_angle=270.0, y_angle=0.0, z_angle=270.0):
             session.Viewport(
@@ -1884,8 +2437,28 @@ class HeatConductionAbaqusUtilities(AbaqusUtilities):
                     height=110.0)
                 viewPortIndexOffset += 1 
 
-    @classmethod
-    def calc_effective_props_hc(cls, vol_unitcell: float, load_vec: list[float], odb_file, scale: float):
+    @staticmethod
+    def calc_effective_props_hc(vol_unitcell: float, load_vec: list[float], odb_file, scale: float):
+        """
+        Calculate effective thermal properties based on the heat conduction analysis results.
+
+        Parameters
+        ----------
+        vol_unitcell : float
+            Volume of the unit cell.
+        load_vec : list of float
+            Load vector applied in the analysis.
+        odb_file : OdbObject
+            The output database file.
+        scale : float
+            Scaling factor for the geometric parameters.
+
+        Returns
+        -------
+        effective_props : dict
+            Dictionary of effective thermal properties.
+        """
+
         Tx, Ty, Tz = load_vec
         # Collect steps
         HeatTransferStep = odb_file.steps.values()[0]
@@ -1903,6 +2476,17 @@ class HeatConductionAbaqusUtilities(AbaqusUtilities):
 
     @staticmethod
     def save_effective_props_hc(model_name: str, effective_props):
+        """
+        Save the effective thermal properties to a CSV file.
+
+        Parameters
+        ----------
+        model_name : str
+            Name of the Abaqus model.
+        effective_props : dict
+            Dictionary of effective thermal properties.
+        """
+
         k1, k2, k3 = effective_props['k']
         props_data ={'k1': k1, 'k2': k2, 'k3': k3}
 
@@ -1911,8 +2495,23 @@ class HeatConductionAbaqusUtilities(AbaqusUtilities):
             writer.writerow(props_data.keys()) 
             writer.writerow(props_data.values())
 
-    @classmethod
-    def create_report_json_hc(cls, model_name: str, unit_cell: UnitCell, effective_props, scale: float):
+    @staticmethod
+    def create_report_json_hc(model_name: str, unit_cell: UnitCell, effective_props, scale: float):
+        """
+        Create a JSON report summarizing the effective thermal properties.
+
+        Parameters
+        ----------
+        model_name : str
+            Name of the Abaqus model.
+        unit_cell : UnitCell
+            Unit cell object containing mesh and geometric properties.
+        effective_props : dict
+            Dictionary of effective properties computed from the analysis.
+        scale : float
+            Scaling factor applied to the geometric parameters.
+        """
+
         file_name = model_name + '_hc_' + '.rpt'
         converted_props = AbaqusUtilities._convert_float32_to_float64(effective_props)
         data = {
@@ -1927,8 +2526,7 @@ class HeatConductionAbaqusUtilities(AbaqusUtilities):
             json.dump(data, file, indent=4, ensure_ascii=False)
 
 
-
-class BCCAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtilities):
+class BCCAbaqusUtilities(ThermalElasticAbaqusUtilities, HeatConductionAbaqusUtilities):
     @staticmethod
     def create_model(model_name: str, geo_params_scaled: Dict[str, float], mesh_params_scaled: Dict[str, float]):
         """
@@ -2165,7 +2763,8 @@ class BCCAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtil
         del model.parts['MeshPartBCC_1_4']
         del model.parts['MeshPartBCC_1_2']
 
-class CuboidAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtilities):
+
+class CuboidAbaqusUtilities(ThermalElasticAbaqusUtilities, HeatConductionAbaqusUtilities):
     @staticmethod
     def create_model(model_name: str, geo_params_scaled: Dict[str, float], mesh_params_scaled: Dict[str, float]):
         """
@@ -2234,18 +2833,21 @@ class CuboidAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusU
         del model.parts['MeshPartCube_1_4']
         del model.parts['MeshPartCube_1_2']
 
-class FCCAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtilities):
+
+class FCCAbaqusUtilities(ThermalElasticAbaqusUtilities, HeatConductionAbaqusUtilities):
     pass
 
-class OCTAbaqusUtilities(ElasticThermalAbaqusUtilities, HeatConductionAbaqusUtilities):
+
+class OCTAbaqusUtilities(ThermalElasticAbaqusUtilities, HeatConductionAbaqusUtilities):
     pass
-        
+
+
 class AbaqusUtilityFactory:
     @staticmethod
     def get_utilities(unit_cell: UnitCell):
         if isinstance(unit_cell, BCCUnitCell):
             return BCCAbaqusUtilities()
-        if isinstance(unit_cell, CubeUnitCell):
+        if isinstance(unit_cell, CuboidUnitCell):
             return CuboidAbaqusUtilities()
         elif isinstance(unit_cell, FCCUnitCell):
             return FCCAbaqusUtilities()
