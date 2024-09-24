@@ -109,7 +109,7 @@ class HeatConductionStrategy(ProblemTypeStrategy):
             abaqus_utilities.reference_points(model_name)
             cls._nodes_matched_cache = abaqus_utilities.setup_nodes(model_name, mesh_sens, dims)
         print('here')
-        abaqus_utilities._set_meshType_hc(model_name, eleType)
+        abaqus_utilities.set_meshType_hc(model_name, eleType)
         nodes_matched = cls._nodes_matched_cache
         abaqus_utilities.set_PBC_hc(model_name, nodes_matched, dims)
         abaqus_utilities.create_steps_hc(model_name)
@@ -130,8 +130,7 @@ class HeatConductionStrategy(ProblemTypeStrategy):
             k: (v * scale if k in ["meshSens", "meshSize"] else v)
             for k, v in unit_cell.get_mesh_params().items()
             }
-        material_properties =  unit_cell.get_material_properties()
-        mesh_sens = mesh_params_scaled['meshSens']
+        
         dims = [geo_params_scaled[k] for k in ['dimX', 'dimY', 'dimZ']]
         vol_unitcell = math.prod(dims)
         load_vec = [i * vol_unitcell for i in load_vec]
@@ -142,4 +141,4 @@ class HeatConductionStrategy(ProblemTypeStrategy):
         result_odb = abaqus_utilities.get_odb_hc(model_name, load_vec, display_in_viewport)
         effective_props = abaqus_utilities.calc_effective_props_hc(vol_unitcell, load_vec, result_odb, scale)
         abaqus_utilities.save_effective_props_hc(model_name, effective_props)
-        abaqus_utilities.create_report_json_hc(model_name, unit_cell, effective_props, scale)
+        abaqus_utilities.create_report_json_hc(model_name, unit_cell, effective_props,  scale)

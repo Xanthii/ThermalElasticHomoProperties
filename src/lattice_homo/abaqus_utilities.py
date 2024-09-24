@@ -611,7 +611,7 @@ class AbaqusUtilities:
 
 
     @classmethod
-    def _set_meshType(cls, model_name: str, eleType='C3D8'):
+    def _set_meshType(cls, model_name: str, eleType='C3D4'):
         '''
         Reset the grid cell type.
         '''
@@ -621,6 +621,7 @@ class AbaqusUtilities:
         model = mdb.models[model_name]
         region = model.parts[part_name].elements[:]
         model.parts[part_name].setElementType(regions=(region,), elemTypes=(elemType1,))
+        return
     
 
 
@@ -633,14 +634,12 @@ class AbaqusUtilities:
         '''
         
         element_type_conversion ={
-            'C3D8': C3D8,
+            'C3D4': C3D4,
             'C3D10': C3D10,
-            'C3D20': C3D20,
-            'DC3D8': DC3D8,
+            'DC3D4': DC3D4,
             'DC3D10': DC3D10,
-            'DC3D20': DC3D20,
             }
-        return element_type_conversion.get(eleType, C3D8)
+        return element_type_conversion.get(eleType, C3D4)
         
 
 class ElasticThermalAbaqusUtilities(AbaqusUtilities):
@@ -1821,12 +1820,12 @@ class HeatConductionAbaqusUtilities(AbaqusUtilities):
 
 
     @classmethod
-    def _set_meshType_hc(cls, model_name: str, eleType='C3D8'):
+    def set_meshType_hc(cls, model_name: str, eleType='C3D4'):
         '''
         Reset the mesh element type to thermal conductivity mesh elements.
         ''' 
         element_type_conversion ={
-            'C3D8': 'DC3D8',
+            'C3D4': 'DC3D4',
             'C3D10': 'DC3D10',
             'C3D20': 'DC3D20'
             }
@@ -1876,16 +1875,10 @@ class HeatConductionAbaqusUtilities(AbaqusUtilities):
             if (load_vec[i] != 0.0):
                 create_viewport_hc(data.name, data.variable_label, data.comp1, data.comp2)
 
-        session.viewports[model_name].restore()
-        session.viewports[model_name].setValues(
-			origin=(10.0, -105.0),
-			width=155.0,
-			height=110.0)
-        
         viewPortIndexOffset = 0
         for i, data in enumerate(viewport_data):
             if (load_vec[i] != 0.0):
-                session.viewports[viewport_data[case_index].name].setValues(
+                session.viewports[data.name].setValues(
                     origin=(15.0 - 5.0 * viewPortIndexOffset, 60.0  - 10.0 * viewPortIndexOffset),
                     width=155.0,
                     height=110.0)
