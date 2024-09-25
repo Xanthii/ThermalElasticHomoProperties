@@ -8,12 +8,12 @@ from lattice_homo.unit_cell import UnitCell, BCCUnitCell, CuboidUnitCell, OCTUni
 class AbaqusUtilityFactory:
     @staticmethod
     def get_utilities(unit_cell: UnitCell):
+        if isinstance(unit_cell, ISOUnitCell):
+            return ISOAbaqusUtilities()
         if isinstance(unit_cell, BCCUnitCell):
             return BCCAbaqusUtilities()
         if isinstance(unit_cell, CuboidUnitCell):
             return CuboidAbaqusUtilities()
-        if isinstance(unit_cell, ISOUnitCell):
-            return ISOAbaqusUtilities()
         elif isinstance(unit_cell, OCTUnitCell):
             return OCTAbaqusUtilities()
         else:

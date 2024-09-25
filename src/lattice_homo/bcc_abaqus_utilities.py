@@ -1,5 +1,6 @@
 from abaqus import *
 from abaqusConstants import *
+import mesh
 import numpy as np
 from typing import Dict, Any
 
@@ -28,8 +29,8 @@ class BCCAbaqusUtilities(ThermalElasticAbaqusUtilities, HeatConductionAbaqusUtil
             del mdb.models['Model-1']
 
         # create sketches
-        skCylinderInter = model.ConstrainedSketch(
-            name='CylinderInter',
+        skCylinderInner_diag = model.ConstrainedSketch(
+            name='CylinderInner_diag',
             sheetSize=inner_radius_diag*2)
         skCylinderExter_x = model.ConstrainedSketch(
             name='CylinderExter_x',
@@ -52,13 +53,13 @@ class BCCAbaqusUtilities(ThermalElasticAbaqusUtilities, HeatConductionAbaqusUtil
             sheetSize=5.0*max(xDimension, yDimension))
 
         # create inter cylinder
-        skCylinderInter.CircleByCenterPerimeter(center=(0.0, 0.0), point1=(inner_radius_diag, 0.0))
+        skCylinderInner_diag.CircleByCenterPerimeter(center=(0.0, 0.0), point1=(inner_radius_diag, 0.0))
         height = (xDimension**2 + yDimension**2 + zDimension**2)**0.5
-        partCylinderInter = model.Part(
-            name='CylinderInter',
+        partCylinderInner_diag = model.Part(
+            name='CylinderInner_diag',
             dimensionality=THREE_D,
             type=DEFORMABLE_BODY)
-        partCylinderInter.BaseSolidExtrude(sketch=skCylinderInter, depth=height)
+        partCylinderInner_diag.BaseSolidExtrude(sketch=skCylinderInner_diag, depth=height)
 
         # create exter cylinder in x-direction
         skCylinderExter_x.CircleByCenterPerimeter(center=(0.0, 0.0), point1=(outer_radius_x, 0.0))
@@ -106,8 +107,8 @@ class BCCAbaqusUtilities(ThermalElasticAbaqusUtilities, HeatConductionAbaqusUtil
         # Then rotate and translate
         assembly = model.rootAssembly
         # inter struts
-        instCylinderInter = assembly.Instance(name='CylinderInter',
-            part=partCylinderInter, dependent=OFF)
+        instCylinderInner_diag = assembly.Instance(name='CylinderInner_diag',
+            part=partCylinderInner_diag, dependent=OFF)
         # calculate the rotation angle and axis
 
         target_vector = np.array([xDimension, yDimension, zDimension])
@@ -117,7 +118,7 @@ class BCCAbaqusUtilities(ThermalElasticAbaqusUtilities, HeatConductionAbaqusUtil
         rotation_angle = degrees(acos(np.dot(initial_vector, target_vector) / 
                             (np.linalg.norm(initial_vector) 
                             * np.linalg.norm(target_vector))))
-        assembly.rotate(instanceList=('CylinderInter',), 
+        assembly.rotate(instanceList=('CylinderInner_diag',), 
                         axisPoint=(0.0, 0.0, 0.0), 
                         axisDirection=(rotation_axis[0], rotation_axis[1], rotation_axis[2]), 
                         angle=rotation_angle)
@@ -157,7 +158,7 @@ class BCCAbaqusUtilities(ThermalElasticAbaqusUtilities, HeatConductionAbaqusUtil
 
         # Merge the four cylinder components.
         inList=[]
-        inList.append(instCylinderInter)
+        inList.append(instCylinderInner_diag)
         inList.append(instCylinderExter_x)
         inList.append(instCylinderExter_y)
         inList.append(instCylinderExter_z)
@@ -171,12 +172,12 @@ class BCCAbaqusUtilities(ThermalElasticAbaqusUtilities, HeatConductionAbaqusUtil
             part=partCylinders, dependent=OFF)
 
         del inList
-        del assembly.instances['CylinderInter']
+        del assembly.instances['CylinderInner_diag']
         del assembly.instances['CylinderExter_x']
         del assembly.instances['CylinderExter_y']
         del assembly.instances['CylinderExter_z']
 
-        del model.parts['CylinderInter']
+        del model.parts['CylinderInner_diag']
         del model.parts['CylinderExter_x']
         del model.parts['CylinderExter_y']
         del model.parts['CylinderExter_z']

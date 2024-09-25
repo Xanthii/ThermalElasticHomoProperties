@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from lattice_homo.unit_cell import UnitCell
-from lattice_homo.abaqus_utilities import AbaqusUtilityFactory, AbaqusUtilities
+from lattice_homo.abaqus_utilities import AbaqusUtilities
+from lattice_homo.abaqus_factory import AbaqusUtilityFactory
 import math
 class ProblemTypeStrategy(ABC):
     '''

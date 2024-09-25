@@ -122,9 +122,9 @@ class BCCUnitCell(UnitCell):
 @dataclass
 class ISOUnitCell(BCCUnitCell):
     '''
-    A subclass of UnitCell representing a Body-Centered Cubic (BCC) unit cell.
+    A subclass of UnitCell representing a ISO unit cell.
     This class implements specific geometric and mesh parameter handling
-    tailored to BCC unit cell structures.
+    tailored to ISO unit cell structures.
 
     geo_params : dict 
         A dictionary of geometric parameters with the following structure:
@@ -145,10 +145,10 @@ class ISOUnitCell(BCCUnitCell):
         for key in required_keys:
             if key not in self.geo_params:
                 raise ValueError(f"Missing required geo_param: {key}")
-        if 'outer_radius_y' not in self.geo_params:
-            self.geo_params['outer_radius_y'] = self.geo_params['outer_radius_x']
-        if 'outer_radius_z' not in self.geo_params:
-            self.geo_params['outer_radius_z'] = self.geo_params['outer_radius_x']
+        if 'inner_radius_y' not in self.geo_params:
+            self.geo_params['inner_radius_y'] = self.geo_params['inner_radius_x']
+        if 'inner_radius_z' not in self.geo_params:
+            self.geo_params['inner_radius_z'] = self.geo_params['inner_radius_x']
         
         super().__post_init__()
         

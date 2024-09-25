@@ -1,5 +1,6 @@
 # the method of modeling and meshing BCC Unit Cell with 
 # 1/8 reduced-scaled model was proved to be correct
+# include homogenization analyst process.
 from abaqus import *
 from abaqusConstants import *
 import part
@@ -9,7 +10,7 @@ import numpy
 import mesh
 # Geometry params global
 dimX, dimY, dimZ = 1.0, 1.0, 1.0 
-radiusInter = 0.05279541
+radiusInner = 0.05279541
 radiusExter_x = 0.07647705
 radiusExter_y = 0.07647705
 radiusExter_z = 0.07647705
@@ -28,9 +29,9 @@ if(modelName!='Model-1'):
 cellVolume = dimX*dimY*dimZ
 model = mdb.models[modelName]
 # create sketches
-skCylinderInter = model.ConstrainedSketch(
-    name='CylinderInter',
-    sheetSize=radiusInter*2)
+skCylinderInner = model.ConstrainedSketch(
+    name='CylinderInner',
+    sheetSize=radiusInner*2)
 skCylinderExter_x = model.ConstrainedSketch(
     name='CylinderExter_x',
     sheetSize=radiusExter_x*2)
@@ -51,14 +52,14 @@ skCuboid_2 = model.ConstrainedSketch(
     name='Cuboid_2',
     sheetSize=5.0*max(xDimension, yDimension))
 
-# create inter cylinder
-skCylinderInter.CircleByCenterPerimeter(center=(0.0, 0.0), point1=(radiusInter, 0.0))
+# create inner cylinder
+skCylinderInner.CircleByCenterPerimeter(center=(0.0, 0.0), point1=(radiusInner, 0.0))
 height = (xDimension**2 + yDimension**2 + zDimension**2)**0.5
-partCylinderInter = model.Part(
-    name='CylinderInter',
+partCylinderInner = model.Part(
+    name='CylinderInner',
     dimensionality=THREE_D,
     type=DEFORMABLE_BODY)
-partCylinderInter.BaseSolidExtrude(sketch=skCylinderInter, depth=height)
+partCylinderInner.BaseSolidExtrude(sketch=skCylinderInner, depth=height)
 
 # create exter cylinder in x-direction
 skCylinderExter_x.CircleByCenterPerimeter(center=(0.0, 0.0), point1=(radiusExter_x, 0.0))
@@ -106,9 +107,9 @@ partCuboid_2.BaseSolidExtrude(sketch=skCuboid_2, depth=5*zDimension)
 # Instantiate the parts
 # Then rotate and translate
 assembly = model.rootAssembly
-# inter struts
-instCylinderInter = assembly.Instance(name='CylinderInter',
-    part=partCylinderInter, dependent=OFF)
+# inner struts
+instCylinderInner = assembly.Instance(name='CylinderInner',
+    part=partCylinderInner, dependent=OFF)
 # calculate the rotation angle and axis
 
 target_vector = numpy.array([xDimension, yDimension, zDimension])
@@ -118,7 +119,7 @@ rotation_axis = rotation_axis / numpy.linalg.norm(rotation_axis)
 rotation_angle = degrees(acos(numpy.dot(initial_vector, target_vector) / 
                     (numpy.linalg.norm(initial_vector) 
                     * numpy.linalg.norm(target_vector))))
-assembly.rotate(instanceList=('CylinderInter',), 
+assembly.rotate(instanceList=('CylinderInner',), 
                 axisPoint=(0.0, 0.0, 0.0), 
                 axisDirection=(rotation_axis[0], rotation_axis[1], rotation_axis[2]), 
                 angle=rotation_angle)
@@ -158,7 +159,7 @@ assembly.translate(instanceList=('Cuboid_2',),
 
 # Merge the four cylinder components.
 inList=[]
-inList.append(instCylinderInter)
+inList.append(instCylinderInner)
 inList.append(instCylinderExter_x)
 inList.append(instCylinderExter_y)
 inList.append(instCylinderExter_z)
@@ -172,12 +173,12 @@ instCylinders = assembly.Instance(name='Cylinders',
     part=partCylinders, dependent=OFF)
 
 del inList
-del assembly.instances['CylinderInter']
+del assembly.instances['CylinderInner']
 del assembly.instances['CylinderExter_x']
 del assembly.instances['CylinderExter_y']
 del assembly.instances['CylinderExter_z']
 
-del model.parts['CylinderInter']
+del model.parts['CylinderInner']
 del model.parts['CylinderExter_x']
 del model.parts['CylinderExter_y']
 del model.parts['CylinderExter_z']

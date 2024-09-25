@@ -1,5 +1,6 @@
 from abaqus import *
 from abaqusConstants import *
+import mesh
 import numpy as np
 from typing import Dict, Any
 

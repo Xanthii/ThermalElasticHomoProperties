@@ -1887,9 +1887,6 @@ class ThermalElasticAbaqusUtilities(AbaqusUtilities):
         Fx_eps0 = get_displacement(frames_iso[0], [0, 1, 2])
         Fy_eps0 = get_displacement(frames_iso[1], [0, 1, 2])
         Fz_eps0 = get_displacement(frames_iso[2], [0, 1, 2])
-        print(f'Fx_eps0: {Fx_eps0}')
-        print(f'Fy_eps0: {Fy_eps0}')
-        print(f'Fz_eps0: {Fz_eps0}')
         # [Shear_yz, Shear_xz, Shear_xy]
         shear_gama0 = [frames_iso[i].fieldOutputs['U'].values[i].data[0] for i in range(3, 6)]
 
