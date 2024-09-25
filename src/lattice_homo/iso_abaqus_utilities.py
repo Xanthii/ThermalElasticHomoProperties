@@ -249,9 +249,6 @@ class ISOAbaqusUtilities(ThermalElasticAbaqusUtilities, HeatConductionAbaqusUtil
             instanceToBeCut=instCylinders,
             cuttingInstances=(instCutter,), originalInstances=DELETE)
 
-        # instISO_Cell_1_8 = assembly.Instance(name='ISO_Cell_1_8',
-        #     part=partISO_Cell_1_8, dependent=ON)
-
         del model.parts['Cuboid_1']
         del model.parts['Cuboid_2']
         del model.parts['Cutter']

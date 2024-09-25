@@ -167,14 +167,15 @@ class OCTUnitCell(UnitCell):
         - "inner_radius_xy" : float
         - "inner_radius_yz" : float
         - "inner_radius_zx" : float
-        
+
         "outer_radius_xy" means the outer strut parallel to the xy plane.
         "inner_radius_xy" means the inner strut parallel to the xy plane.
 
 
     '''
-    def __post_init__(self):        
-        required_keys = ["dimX", "inner_radius_x"]
+    def __post_init__(self):
+        super().__post_init__()
+        required_keys = ["dimX", "inner_radius_xy", "outer_radius_xy"]
         for key in required_keys:
             if key not in self.geo_params:
                 raise ValueError(f"Missing required geo_param: {key}")
@@ -184,11 +185,17 @@ class OCTUnitCell(UnitCell):
         if 'dimZ' not in self.geo_params:
             self.geo_params['dimZ'] = self.geo_params['dimX']
 
-        if 'inner_radius_y' not in self.geo_params:
-            self.geo_params['inner_radius_y'] = self.geo_params['inner_radius_x']
-        if 'inner_radius_z' not in self.geo_params:
-            self.geo_params['inner_radius_z'] = self.geo_params['inner_radius_x']
-        super().__post_init__()
+        if 'inner_radius_yz' not in self.geo_params:
+            self.geo_params['inner_radius_yz'] = self.geo_params['inner_radius_xy']
+        if 'inner_radius_zx' not in self.geo_params:
+            self.geo_params['inner_radius_zx'] = self.geo_params['inner_radius_xy']
+
+        if 'outer_radius_yz' not in self.geo_params:
+            self.geo_params['outer_radius_yz'] = self.geo_params['outer_radius_xy']
+        if 'outer_radius_zx' not in self.geo_params:
+            self.geo_params['outer_radius_zx'] = self.geo_params['outer_radius_xy']
+        
+        self._apply_geo_scaling()
 
 @dataclass
 class CuboidUnitCell(UnitCell):
