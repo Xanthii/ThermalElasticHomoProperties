@@ -94,7 +94,6 @@ class BCCUnitCell(UnitCell):
     '''
     def __post_init__(self):
         super().__post_init__()
-
         required_keys = ["dimX", "inner_radius_diag", "outer_radius_x"]
         for key in required_keys:
             if key not in self.geo_params:
@@ -139,7 +138,6 @@ class ISOUnitCell(BCCUnitCell):
         - "inner_radius_y" : float
         - "inner_radius_z" : float
     '''
-
     def __post_init__(self):        
         required_keys = ["inner_radius_x"]
         for key in required_keys:
@@ -149,7 +147,6 @@ class ISOUnitCell(BCCUnitCell):
             self.geo_params['inner_radius_y'] = self.geo_params['inner_radius_x']
         if 'inner_radius_z' not in self.geo_params:
             self.geo_params['inner_radius_z'] = self.geo_params['inner_radius_x']
-        
         super().__post_init__()
         
 @dataclass       
@@ -164,17 +161,38 @@ class OCTUnitCell(UnitCell):
         - "dimX" : float
         - "dimY" : float
         - "dimZ" : float
-        - "inner_radius_diag" : float
-        - "outer_radius_x" : float
-        - "outer_radius_y" : float
-        - "outer_radius_z" : float
-        - "inner_radius_diag_x" : float
-        - "inner_radius_diag_y" : float
-        - "inner_radius_diag_z" : float
+        - "outer_radius_xy" : float
+        - "outer_radius_yz" : float
+        - "outer_radius_zx" : float
+        - "inner_radius_xy" : float
+        - "inner_radius_yz" : float
+        - "inner_radius_zx" : float
+        
+        "outer_radius_xy" means the outer strut parallel to the xy plane.
+        "inner_radius_xy" means the inner strut parallel to the xy plane.
+
+
     '''
+    def __post_init__(self):        
+        required_keys = ["dimX", "inner_radius_x"]
+        for key in required_keys:
+            if key not in self.geo_params:
+                raise ValueError(f"Missing required geo_param: {key}")
+
+        if 'dimY' not in self.geo_params:
+            self.geo_params['dimY'] = self.geo_params['dimX']
+        if 'dimZ' not in self.geo_params:
+            self.geo_params['dimZ'] = self.geo_params['dimX']
+
+        if 'inner_radius_y' not in self.geo_params:
+            self.geo_params['inner_radius_y'] = self.geo_params['inner_radius_x']
+        if 'inner_radius_z' not in self.geo_params:
+            self.geo_params['inner_radius_z'] = self.geo_params['inner_radius_x']
+        super().__post_init__()
 
 @dataclass
 class CuboidUnitCell(UnitCell):
+    # need to be extended to outer_radius variables.
     '''
     A subclass of UnitCell representing a Cuboid unit cell.
     This class implements specific geometric and mesh parameter handling
@@ -185,6 +203,7 @@ class CuboidUnitCell(UnitCell):
         - "dimX" : float
         - "dimY" : float
         - "dimZ" : float
+        
     '''
     def __post_init__(self):
         required_keys = ["dimX"]
