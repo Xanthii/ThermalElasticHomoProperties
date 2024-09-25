@@ -74,8 +74,7 @@ class UnitCell:
         geomScale = np.log10(min_size)
         scale = 10.0 ** int(1 - geomScale)
         return scale
-    
-    
+     
 @dataclass
 class BCCUnitCell(UnitCell):
     '''
@@ -88,15 +87,15 @@ class BCCUnitCell(UnitCell):
         - "dimX" : float
         - "dimY" : float
         - "dimZ" : float
-        - "radiusInter" : float
-        - "radiusExter_x" : float
-        - "radiusExter_y" : float
-        - "radiusExter_z" : float
+        - "inner_radius_diag" : float
+        - "outer_radius_x" : float
+        - "outer_radius_y" : float
+        - "outer_radius_z" : float
     '''
     def __post_init__(self):
         super().__post_init__()
 
-        required_keys = ["dimX", "radiusInter", "radiusExter_x"]
+        required_keys = ["dimX", "inner_radius_diag", "outer_radius_x"]
         for key in required_keys:
             if key not in self.geo_params:
                 raise ValueError(f"Missing required geo_param: {key}")
@@ -106,10 +105,10 @@ class BCCUnitCell(UnitCell):
         if 'dimZ' not in self.geo_params:
             self.geo_params['dimZ'] = self.geo_params['dimX']
 
-        if 'radiusExter_y' not in self.geo_params:
-            self.geo_params['radiusExter_y'] = self.geo_params['radiusExter_x']
-        if 'radiusExter_z' not in self.geo_params:
-            self.geo_params['radiusExter_z'] = self.geo_params['radiusExter_x']
+        if 'outer_radius_y' not in self.geo_params:
+            self.geo_params['outer_radius_y'] = self.geo_params['outer_radius_x']
+        if 'outer_radius_z' not in self.geo_params:
+            self.geo_params['outer_radius_z'] = self.geo_params['outer_radius_x']
 
         if 'name' not in self.material_properties:
             self.material_properties['name'] = 'Material-1'
@@ -121,13 +120,58 @@ class BCCUnitCell(UnitCell):
         self._apply_geo_scaling()
 
 @dataclass
-class FCCUnitCell(UnitCell):
-    pass
+class ISOUnitCell(BCCUnitCell):
+    '''
+    A subclass of UnitCell representing a Body-Centered Cubic (BCC) unit cell.
+    This class implements specific geometric and mesh parameter handling
+    tailored to BCC unit cell structures.
 
+    geo_params : dict 
+        A dictionary of geometric parameters with the following structure:
+        - "dimX" : float
+        - "dimY" : float
+        - "dimZ" : float
+        - "inner_radius_diag" : float
+        - "outer_radius_x" : float
+        - "outer_radius_y" : float
+        - "outer_radius_z" : float
+        - "inner_radius_x" : float
+        - "inner_radius_y" : float
+        - "inner_radius_z" : float
+    '''
+
+    def __post_init__(self):        
+        required_keys = ["inner_radius_x"]
+        for key in required_keys:
+            if key not in self.geo_params:
+                raise ValueError(f"Missing required geo_param: {key}")
+        if 'outer_radius_y' not in self.geo_params:
+            self.geo_params['outer_radius_y'] = self.geo_params['outer_radius_x']
+        if 'outer_radius_z' not in self.geo_params:
+            self.geo_params['outer_radius_z'] = self.geo_params['outer_radius_x']
+        
+        super().__post_init__()
+        
 @dataclass       
 class OCTUnitCell(UnitCell):
-    pass
+    '''
+    A subclass of UnitCell representing a Octet truss unit cell.
+    This class implements specific geometric and mesh parameter handling
+    tailored to OCT unit cell structures.
 
+    geo_params : dict 
+        A dictionary of geometric parameters with the following structure:
+        - "dimX" : float
+        - "dimY" : float
+        - "dimZ" : float
+        - "inner_radius_diag" : float
+        - "outer_radius_x" : float
+        - "outer_radius_y" : float
+        - "outer_radius_z" : float
+        - "inner_radius_diag_x" : float
+        - "inner_radius_diag_y" : float
+        - "inner_radius_diag_z" : float
+    '''
 
 @dataclass
 class CuboidUnitCell(UnitCell):
