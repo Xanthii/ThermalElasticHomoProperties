@@ -1848,6 +1848,9 @@ class ThermalElasticAbaqusUtilities(AbaqusUtilities):
         """
         Calculate effective properties based on the thermal-elastic analysis results.
 
+        The calculated reference point displacement is the equivalent strain value if 
+        a concentrated force load is applied. e.g. the F_eps0 = epsilon^{0}_{x} etc.
+
         This method calculates the effective elastic moduli, Poisson ratios, and thermal 
         expansion coefficients from the ODB results.
 
