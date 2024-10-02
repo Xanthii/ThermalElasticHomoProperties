@@ -154,5 +154,3 @@ class HeatConductionStrategy(ProblemTypeStrategy):
         effective_props = abaqus_utilities.calc_effective_props_hc(vol_unitcell, load_vec, result_odb, scale)
         abaqus_utilities.save_effective_props_hc(model_name, effective_props)
         abaqus_utilities.create_report_json_hc(model_name, unit_cell, effective_props,  scale)
-
-
